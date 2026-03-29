@@ -7,6 +7,7 @@
   <a href="https://pypi.org/project/opensheet-core/"><img src="https://img.shields.io/pypi/v/opensheet-core.svg" alt="PyPI"></a>
   <a href="https://github.com/0xNadr/opensheet-core/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9%E2%80%933.13-blue.svg" alt="Python 3.9–3.13"></a>
+  <a href="https://codecov.io/gh/0xNadr/opensheet-core"><img src="https://codecov.io/gh/0xNadr/opensheet-core/branch/main/graph/badge.svg" alt="Coverage"></a>
 </p>
 
 <p align="center">

@@ -1,0 +1,11 @@
+# Default owner for everything
+* @0xNadr
+
+# Rust core
+/src/ @0xNadr
+
+# Python bindings and package
+/python/ @0xNadr
+
+# CI/CD
+/.github/ @0xNadr

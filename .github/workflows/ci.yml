@@ -26,12 +26,19 @@ jobs:
 
       - name: Build and install
         run: |
-          pip install maturin pytest
+          pip install maturin pytest pytest-cov
           maturin build --out dist
           pip install --no-index --find-links dist opensheet-core
 
       - name: Run Python tests
-        run: pytest tests/ -v
+        run: pytest tests/ -v --cov=opensheet_core --cov-report=xml
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          fail_ci_on_error: false
 
       - name: Run Rust tests
         run: cargo test --no-default-features
