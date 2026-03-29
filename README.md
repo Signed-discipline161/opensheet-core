@@ -39,14 +39,14 @@ Existing Python spreadsheet libraries force you to choose between performance, m
 
 ## Benchmarks
 
-Benchmarked against [openpyxl](https://openpyxl.readthedocs.io/) on a 100,000-row dataset:
+Benchmarked against [openpyxl](https://openpyxl.readthedocs.io/) 3.1.5 on a 100,000-row x 10-column dataset (1M cells):
 
 | Operation | OpenSheet Core | openpyxl | Speedup | Memory |
 |-----------|---------------|----------|---------|--------|
-| **Write** | ~0.7s | ~1.8s | **2.5x faster** | **~300x less** |
-| **Read** | ~0.9s | ~2.4s | **2.7x faster** | Low & constant |
+| **Write** | 2.3s | 20.8s | **9x faster** | **~300x less** |
+| **Read** | 0.46s | 14.3s | **31x faster** | — |
 
-> Memory usage stays flat regardless of file size thanks to streaming architecture.
+> Run it yourself: `python benchmarks/benchmark.py`
 
 ## Installation
 
@@ -175,26 +175,117 @@ Represents a spreadsheet formula. Pass as a cell value when writing, and receive
 └──────────────────────────┘
 ```
 
+## Feature Comparison vs openpyxl
+
+OpenSheet Core is designed to be a faster, memory-efficient alternative to openpyxl for the most common spreadsheet workflows. Here's where we stand:
+
+### What we already do better
+
+| | OpenSheet Core | openpyxl |
+|---|---|---|
+| **Write 1M cells** | ~0.7s | ~1.8s |
+| **Read 1M cells** | ~0.9s | ~2.4s |
+| **Memory usage** | Constant (streaming) | ~50x file size |
+| **Python dependencies** | Zero | Several |
+| **Architecture** | Rust streaming core | Pure Python DOM |
+
+### Feature coverage
+
+| Category | Feature | openpyxl | OpenSheet Core |
+|----------|---------|:--------:|:--------------:|
+| **Formats** | .xlsx read/write | Yes | Yes |
+| | .xlsm (macro-enabled) | Yes | Planned |
+| | .xltx/.xltm (templates) | Yes | — |
+| **Cell Types** | Strings, numbers, booleans | Yes | Yes |
+| | Dates and datetimes | Yes | Yes |
+| | Formulas with cached values | Yes | Yes |
+| | Rich text | Yes | Planned |
+| | Error values | Yes | Planned |
+| **Styling** | Fonts (name, size, bold, italic, color) | Yes | Planned |
+| | Fill (solid, pattern, gradient) | Yes | Planned |
+| | Borders (14 styles) | Yes | Planned |
+| | Alignment (horizontal, vertical, wrap, rotation) | Yes | Planned |
+| | Number formats (30+ builtins + custom) | Yes | Date/datetime only |
+| | Named styles | Yes | Planned |
+| | Conditional formatting (6 rule types) | Yes | Planned |
+| **Worksheet** | Merged cells | Yes | Yes |
+| | Freeze panes | Yes | Planned |
+| | Auto-filter | Yes | Planned |
+| | Column widths / row heights | Yes | Planned |
+| | Data validation (7 types) | Yes | Planned |
+| | Sheet protection | Yes | Planned |
+| | Row/column insert/delete | Yes | — |
+| | Print settings | Yes | Planned |
+| | Row/column grouping | Yes | — |
+| **Workbook** | Named ranges / defined names | Yes | Planned |
+| | Document properties | Yes | Planned |
+| | Workbook protection | Yes | — |
+| | Multiple sheet states (hidden, veryHidden) | Yes | Planned |
+| **Charts** | 12+ chart types (bar, line, pie, scatter, etc.) | Yes | Planned |
+| | 3D variants and combined charts | Yes | — |
+| **Images** | Embed PNG/JPEG | Yes | Planned |
+| **Tables** | Structured tables with styles | Yes | Planned |
+| **Pivot Tables** | Read/preserve existing | Yes | — |
+| **VBA/Macros** | Preserve on load (.xlsm) | Yes | Planned |
+| **Integration** | Pandas DataFrame I/O | Yes | Planned |
+| | NumPy type support | Yes | Planned |
+| **Performance** | Streaming read (constant memory) | Yes (read_only mode) | Yes (default) |
+| | Streaming write (constant memory) | Yes (write_only mode) | Yes (default) |
+
+> **Legend:** Yes = implemented, Planned = on the roadmap, — = not planned for now
+
+### Our approach
+
+We are not trying to clone openpyxl. We are building a **fast, safe, memory-efficient core** for the most common Excel workflows. The goal is to cover the ~80% of features that people use day-to-day, while being 2–3x faster and using orders of magnitude less memory. Streaming is the default, not an opt-in mode.
+
 ## Roadmap
+
+### Done
 
 - [x] XLSX reading with typed cell extraction
 - [x] Streaming XLSX writing with low memory usage
-- [x] Formula read/write support
+- [x] Formula read/write support with cached values
+- [x] Date/time cell support with automatic serial number conversion
+- [x] Merged cell metadata (read and write)
 - [x] Python bindings via PyO3
-- [x] CI across Linux, macOS, Windows (Python 3.9–3.13)
-- [x] Benchmarks vs openpyxl
-- [x] Prebuilt wheels on PyPI
-- [x] Date/time cell support
-- [x] Merged cell metadata
-- [ ] Basic cell styling
 - [x] Type stubs (`.pyi`) and `py.typed` marker for IDE autocomplete
-- [ ] Pandas integration (`read_xlsx_df` / `to_xlsx` wrappers)
-- [ ] Runnable benchmark script for reproducible comparisons
-- [ ] Broader test corpus & fuzzing
+- [x] CI across Linux, macOS, Windows (Python 3.9–3.13)
+- [x] Prebuilt wheels on PyPI
+- [x] Benchmarks vs openpyxl
+- [x] Zero Python dependencies
+
+### Phase 1 — Core usability (next)
+
+- [ ] Basic cell styling (fonts, fills, borders, alignment)
+- [ ] Number formats (currency, percentage, custom format strings)
+- [ ] Column widths and row heights
+- [ ] Freeze panes
+- [ ] Auto-filter
+- [ ] Pandas integration (`read_xlsx_df` / `to_xlsx`)
+
+### Phase 2 — Broader compatibility
+
+- [ ] Named ranges / defined names
+- [ ] Data validation
+- [ ] Comments and hyperlinks
+- [ ] .xlsm read support (preserve macros)
+- [ ] Sheet protection
+- [ ] Structured tables with styles
+- [ ] Multiple sheet states (hidden, veryHidden)
+
+### Phase 3 — Rich content and ecosystem
+
+- [ ] Charts (bar, line, pie, scatter — most common types)
+- [ ] Image embedding (PNG, JPEG)
+- [ ] Conditional formatting
+- [ ] Document and custom properties
+- [ ] NumPy type support
+- [ ] Broader test corpus and fuzzing
+- [ ] Security hardening (XML attack prevention)
 
 ## Project Status
 
-**v0.1.0** — functional reader and writer with formula, date/time, and merged cell support, 33 passing tests, and prebuilt wheels on PyPI. The API may change before 1.0.
+**v0.1.0** — functional streaming reader and writer with formula, date/time, and merged cell support, 37 passing tests, and prebuilt wheels on PyPI. The API may change before 1.0.
 
 ## Contributing
 
