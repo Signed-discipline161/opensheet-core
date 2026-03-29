@@ -31,7 +31,7 @@ jobs:
           pip install --no-index --find-links dist opensheet-core
 
       - name: Run Python tests
-        run: pytest tests/ -v --cov=opensheet_core --cov-report=xml
+        run: pytest tests/ -v --cov=opensheet_core --cov-report=xml --junitxml=junit.xml -o junit_family=legacy
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
@@ -39,6 +39,12 @@ jobs:
         with:
           files: coverage.xml
           fail_ci_on_error: false
+
+      - name: Upload test results
+        if: ${{ !cancelled() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' }}
+        uses: codecov/test-results-action@v1
+        with:
+          files: junit.xml
 
       - name: Run Rust tests
         run: cargo test --no-default-features
