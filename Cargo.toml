@@ -11,3 +11,5 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3 = { version = "0.28", features = ["extension-module"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.37"
