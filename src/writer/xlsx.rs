@@ -76,9 +76,7 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
             sheet_open: false,
             has_dates: false,
             has_datetimes: false,
-            pending_merges: PendingMerges {
-                ranges: Vec::new(),
-            },
+            pending_merges: PendingMerges { ranges: Vec::new() },
         }
     }
 
