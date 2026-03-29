@@ -12,6 +12,7 @@ build/
 *.so
 *.dylib
 *.pyd
+*.dSYM/
 
 # Virtual environments
 .venv/
