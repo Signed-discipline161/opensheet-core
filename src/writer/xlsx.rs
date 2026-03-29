@@ -3,7 +3,7 @@ use std::io::{Seek, Write};
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
-use crate::types::CellValue;
+use crate::types::{datetime_to_excel_serial, CellValue};
 
 /// Errors that can occur during XLSX writing.
 #[derive(Debug)]
@@ -56,6 +56,8 @@ pub struct StreamingXlsxWriter<W: Write + Seek> {
     sheets: Vec<SheetEntry>,
     current_row: u32,
     sheet_open: bool,
+    has_dates: bool,
+    has_datetimes: bool,
 }
 
 impl<W: Write + Seek> StreamingXlsxWriter<W> {
@@ -66,6 +68,8 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
             sheets: Vec::new(),
             current_row: 0,
             sheet_open: false,
+            has_dates: false,
+            has_datetimes: false,
         }
     }
 
@@ -169,6 +173,40 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
                             )?;
                         }
                     }
+                }
+                CellValue::Date { year, month, day } => {
+                    let serial = datetime_to_excel_serial(*year, *month, *day, 0, 0, 0, 0);
+                    // Style index 1 = date format
+                    write!(
+                        self.zip()?,
+                        "<c r=\"{cell_ref}\" s=\"1\"><v>{serial}</v></c>"
+                    )?;
+                    self.has_dates = true;
+                }
+                CellValue::DateTime {
+                    year,
+                    month,
+                    day,
+                    hour,
+                    minute,
+                    second,
+                    microsecond,
+                } => {
+                    let serial = datetime_to_excel_serial(
+                        *year,
+                        *month,
+                        *day,
+                        *hour,
+                        *minute,
+                        *second,
+                        *microsecond,
+                    );
+                    // Style index 2 = datetime format
+                    write!(
+                        self.zip()?,
+                        "<c r=\"{cell_ref}\" s=\"2\"><v>{serial}</v></c>"
+                    )?;
+                    self.has_datetimes = true;
                 }
                 CellValue::Empty => {}
             }
@@ -286,17 +324,25 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
              </Relationships>"
         )?;
 
-        // Write xl/styles.xml (minimal required styles)
+        // Write xl/styles.xml with date/datetime formats
         self.zip()?.start_file("xl/styles.xml", options)?;
         write!(
             self.zip()?,
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
              <styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\
+             <numFmts count=\"2\">\
+             <numFmt numFmtId=\"164\" formatCode=\"yyyy\\-mm\\-dd\"/>\
+             <numFmt numFmtId=\"165\" formatCode=\"yyyy\\-mm\\-dd\\ hh:mm:ss\"/>\
+             </numFmts>\
              <fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>\
              <fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills>\
              <borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>\
              <cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>\
-             <cellXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/></cellXfs>\
+             <cellXfs count=\"3\">\
+             <xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>\
+             <xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>\
+             <xf numFmtId=\"165\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>\
+             </cellXfs>\
              </styleSheet>"
         )?;
 

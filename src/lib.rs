@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyNone, PyString};
+use pyo3::types::{PyBool, PyDate, PyDateTime, PyDict, PyFloat, PyInt, PyList, PyNone, PyString};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
@@ -36,6 +36,32 @@ fn cell_to_py(py: Python<'_>, cell: &CellValue) -> PyResult<Py<PyAny>> {
             };
             Ok(f.into_pyobject(py)?.into_any().unbind())
         }
+        CellValue::Date { year, month, day } => {
+            let date = PyDate::new(py, *year, *month as u8, *day as u8)?;
+            Ok(date.into_any().unbind())
+        }
+        CellValue::DateTime {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            microsecond,
+        } => {
+            let dt = PyDateTime::new(
+                py,
+                *year,
+                *month as u8,
+                *day as u8,
+                *hour as u8,
+                *minute as u8,
+                *second as u8,
+                *microsecond,
+                None,
+            )?;
+            Ok(dt.into_any().unbind())
+        }
         CellValue::Empty => Ok(PyNone::get(py).to_owned().into_any().unbind()),
     }
 }
@@ -71,6 +97,29 @@ fn py_to_cell(obj: &Bound<'_, PyAny>) -> CellValue {
             formula: f.formula.clone(),
             cached_value: cached,
         }
+    } else if let Ok(dt) = obj.cast::<PyDateTime>() {
+        // Must check datetime before date since datetime is a subclass of date
+        let year: i32 = dt.getattr("year").unwrap().extract().unwrap_or(1900);
+        let month: u32 = dt.getattr("month").unwrap().extract().unwrap_or(1);
+        let day: u32 = dt.getattr("day").unwrap().extract().unwrap_or(1);
+        let hour: u32 = dt.getattr("hour").unwrap().extract().unwrap_or(0);
+        let minute: u32 = dt.getattr("minute").unwrap().extract().unwrap_or(0);
+        let second: u32 = dt.getattr("second").unwrap().extract().unwrap_or(0);
+        let microsecond: u32 = dt.getattr("microsecond").unwrap().extract().unwrap_or(0);
+        CellValue::DateTime {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            microsecond,
+        }
+    } else if let Ok(d) = obj.cast::<PyDate>() {
+        let year: i32 = d.getattr("year").unwrap().extract().unwrap_or(1900);
+        let month: u32 = d.getattr("month").unwrap().extract().unwrap_or(1);
+        let day: u32 = d.getattr("day").unwrap().extract().unwrap_or(1);
+        CellValue::Date { year, month, day }
     } else if let Ok(b) = obj.cast::<PyBool>() {
         CellValue::Bool(b.is_true())
     } else if let Ok(i) = obj.cast::<PyInt>() {
@@ -191,6 +240,17 @@ impl Formula {
         match &self.cached_value {
             Some(_) => format!("Formula('{}', cached_value=...)", self.formula),
             None => format!("Formula('{}')", self.formula),
+        }
+    }
+
+    fn __eq__(&self, py: Python<'_>, other: &Formula) -> PyResult<bool> {
+        if self.formula != other.formula {
+            return Ok(false);
+        }
+        match (&self.cached_value, &other.cached_value) {
+            (None, None) => Ok(true),
+            (Some(a), Some(b)) => a.bind(py).eq(b.bind(py)),
+            _ => Ok(false),
         }
     }
 }

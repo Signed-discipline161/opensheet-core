@@ -163,3 +163,91 @@ def test_formula_class():
     f2 = Formula("A1*2", cached_value=42)
     assert f2.formula == "A1*2"
     assert f2.cached_value == 42
+
+
+def test_formula_equality():
+    """Test Formula __eq__ comparisons."""
+    from opensheet_core import Formula
+
+    assert Formula("A1+B1") == Formula("A1+B1")
+    assert Formula("A1+B1", cached_value=10) == Formula("A1+B1", cached_value=10)
+    assert Formula("A1+B1") != Formula("A1+B2")
+    assert Formula("A1+B1", cached_value=10) != Formula("A1+B1", cached_value=20)
+    assert Formula("A1+B1") != Formula("A1+B1", cached_value=10)
+
+
+def test_read_openpyxl_file(tmp_xlsx):
+    """Write with openpyxl, read with opensheet_core (interop validation)."""
+    openpyxl = pytest.importorskip("openpyxl")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Interop"
+    ws.append(["Name", "Age", "Score"])
+    ws.append(["Alice", 30, 95.5])
+    ws.append(["Bob", 25, 87])
+    ws.append([None, None, None])  # empty row
+    ws.append(["Charlie", 35, 91.2])
+    wb.save(tmp_xlsx)
+
+    rows = opensheet_core.read_sheet(tmp_xlsx)
+    assert rows[0] == ["Name", "Age", "Score"]
+    assert rows[1] == ["Alice", 30, 95.5]
+    assert rows[2] == ["Bob", 25, 87]
+    assert rows[3] == []  # empty row
+    assert rows[4] == ["Charlie", 35, 91.2]
+
+
+def test_date_write_and_read(tmp_xlsx):
+    """Write dates and verify they round-trip."""
+    import datetime
+
+    with opensheet_core.XlsxWriter(tmp_xlsx) as w:
+        w.add_sheet("Dates")
+        w.write_row(["Event", "Date", "Timestamp"])
+        w.write_row([
+            "Launch",
+            datetime.date(2025, 3, 15),
+            datetime.datetime(2025, 3, 15, 14, 30, 0),
+        ])
+        w.write_row([
+            "Update",
+            datetime.date(2021, 1, 1),
+            datetime.datetime(2021, 6, 15, 9, 0, 0),
+        ])
+
+    rows = opensheet_core.read_sheet(tmp_xlsx)
+
+    assert rows[0] == ["Event", "Date", "Timestamp"]
+
+    # Date cells
+    assert rows[1][0] == "Launch"
+    assert rows[1][1] == datetime.date(2025, 3, 15)
+    assert isinstance(rows[1][1], datetime.date)
+
+    # DateTime cells
+    assert rows[1][2] == datetime.datetime(2025, 3, 15, 14, 30, 0)
+    assert isinstance(rows[1][2], datetime.datetime)
+
+    # Second row
+    assert rows[2][1] == datetime.date(2021, 1, 1)
+    assert rows[2][2] == datetime.datetime(2021, 6, 15, 9, 0, 0)
+
+
+def test_date_read_openpyxl(tmp_xlsx):
+    """Write dates with openpyxl, read with opensheet_core."""
+    import datetime
+
+    openpyxl = pytest.importorskip("openpyxl")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Date", "DateTime"])
+    ws.append([datetime.date(2025, 1, 1), datetime.datetime(2025, 6, 15, 10, 30, 0)])
+    wb.save(tmp_xlsx)
+
+    rows = opensheet_core.read_sheet(tmp_xlsx)
+    assert rows[0] == ["Date", "DateTime"]
+    # openpyxl stores dates with format codes that our reader should detect
+    assert rows[1][0] == datetime.date(2025, 1, 1) or rows[1][0] == datetime.datetime(2025, 1, 1, 0, 0, 0)
+    assert rows[1][1] == datetime.datetime(2025, 6, 15, 10, 30, 0)

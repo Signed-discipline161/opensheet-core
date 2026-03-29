@@ -5,7 +5,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use zip::ZipArchive;
 
-use crate::types::{CellValue, Sheet};
+use crate::types::{excel_serial_to_datetime, CellValue, Sheet};
 
 /// Errors that can occur during XLSX reading.
 #[derive(Debug)]
@@ -70,10 +70,13 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<Vec<Sheet>, XlsxError> {
     // 3. Parse shared strings
     let shared_strings = parse_shared_strings(&mut archive)?;
 
-    // 4. Parse each worksheet
+    // 4. Parse styles for date detection
+    let date_styles = parse_styles(&mut archive)?;
+
+    // 5. Parse each worksheet
     let mut sheets = Vec::with_capacity(sheet_infos.len());
     for info in &sheet_infos {
-        let rows = parse_worksheet(&mut archive, &info.path, &shared_strings)?;
+        let rows = parse_worksheet(&mut archive, &info.path, &shared_strings, &date_styles)?;
         sheets.push(Sheet {
             name: info.name.clone(),
             rows,
@@ -227,6 +230,137 @@ fn parse_shared_strings<R: Read + Seek>(
     Ok(strings)
 }
 
+/// Parse xl/styles.xml to determine which cell style indices use date number formats.
+/// Returns a set of xf indices (0-based) that are date-formatted.
+fn parse_styles<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<Vec<bool>, XlsxError> {
+    let file = match archive.by_name("xl/styles.xml") {
+        Ok(f) => f,
+        Err(_) => return Ok(Vec::new()),
+    };
+
+    let mut reader = Reader::from_reader(BufReader::new(file));
+    let mut buf = Vec::new();
+
+    // Custom number formats: numFmtId -> formatCode
+    let mut custom_formats: HashMap<u32, String> = HashMap::new();
+    // The numFmtId for each xf in cellXfs
+    let mut xf_num_fmt_ids: Vec<u32> = Vec::new();
+    let mut in_num_fmts = false;
+    let mut in_cell_xfs = false;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) => match e.name().as_ref() {
+                b"numFmts" => in_num_fmts = true,
+                b"cellXfs" => in_cell_xfs = true,
+                b"xf" if in_cell_xfs => {
+                    let mut num_fmt_id: u32 = 0;
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"numFmtId" {
+                            num_fmt_id = String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
+                        }
+                    }
+                    xf_num_fmt_ids.push(num_fmt_id);
+                }
+                _ => {}
+            },
+            Ok(Event::Empty(ref e)) => match e.name().as_ref() {
+                b"numFmt" if in_num_fmts => {
+                    let mut id: u32 = 0;
+                    let mut code = String::new();
+                    for attr in e.attributes().flatten() {
+                        match attr.key.as_ref() {
+                            b"numFmtId" => {
+                                id = String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
+                            }
+                            b"formatCode" => {
+                                code = String::from_utf8_lossy(&attr.value).to_string();
+                            }
+                            _ => {}
+                        }
+                    }
+                    if id > 0 {
+                        custom_formats.insert(id, code);
+                    }
+                }
+                b"xf" if in_cell_xfs => {
+                    let mut num_fmt_id: u32 = 0;
+                    for attr in e.attributes().flatten() {
+                        if attr.key.as_ref() == b"numFmtId" {
+                            num_fmt_id = String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
+                        }
+                    }
+                    xf_num_fmt_ids.push(num_fmt_id);
+                }
+                _ => {}
+            },
+            Ok(Event::End(ref e)) => match e.name().as_ref() {
+                b"numFmts" => in_num_fmts = false,
+                b"cellXfs" => in_cell_xfs = false,
+                _ => {}
+            },
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(XlsxError::Xml(e)),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    // Build a bool vec: is_date[xf_index] = true if the format is a date format
+    let is_date: Vec<bool> = xf_num_fmt_ids
+        .iter()
+        .map(|&fmt_id| is_date_format(fmt_id, &custom_formats))
+        .collect();
+
+    Ok(is_date)
+}
+
+/// Check if a number format ID represents a date/time format.
+/// Built-in date format IDs: 14-22, 27-36, 45-47, 50-58.
+/// Custom formats are checked for date/time pattern characters.
+fn is_date_format(num_fmt_id: u32, custom_formats: &HashMap<u32, String>) -> bool {
+    // Built-in date/time formats
+    match num_fmt_id {
+        14..=22 | 27..=36 | 45..=47 | 50..=58 => return true,
+        0 => return false,      // General
+        1..=13 => return false, // Number formats
+        _ => {}
+    }
+
+    // Check custom format codes
+    if let Some(code) = custom_formats.get(&num_fmt_id) {
+        is_date_format_code(code)
+    } else {
+        false
+    }
+}
+
+/// Check if a format code string looks like a date/time format.
+fn is_date_format_code(code: &str) -> bool {
+    let lower = code.to_lowercase();
+    // Skip text in quotes and brackets
+    let mut cleaned = String::new();
+    let mut in_quotes = false;
+    let mut in_bracket = false;
+    for ch in lower.chars() {
+        match ch {
+            '"' => in_quotes = !in_quotes,
+            '[' if !in_quotes => in_bracket = true,
+            ']' if !in_quotes => in_bracket = false,
+            _ if !in_quotes && !in_bracket => cleaned.push(ch),
+            _ => {}
+        }
+    }
+
+    // Look for date/time characters (y, m, d, h, s) but not pure number formats
+    let has_date = cleaned.contains('y') || cleaned.contains('d');
+    let has_time = cleaned.contains('h') || cleaned.contains('s');
+    // 'm' alone could be minutes (if near h/s) or months
+    let has_m = cleaned.contains('m');
+
+    has_date || has_time || (has_m && !cleaned.contains('#') && !cleaned.contains('0'))
+}
+
 /// Parse a column reference like "A1", "AA5", "BZ100" and return the 0-based column index.
 fn col_to_index(col_ref: &str) -> usize {
     let mut index: usize = 0;
@@ -260,6 +394,7 @@ fn parse_worksheet<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     path: &str,
     shared_strings: &[String],
+    date_styles: &[bool],
 ) -> Result<Vec<Vec<CellValue>>, XlsxError> {
     let file = archive.by_name(path)?;
     let mut reader = Reader::from_reader(BufReader::new(file));
@@ -269,6 +404,7 @@ fn parse_worksheet<R: Read + Seek>(
     let mut current_row: usize = 0;
     let mut current_col: usize = 0;
     let mut cell_type = String::new();
+    let mut cell_style: usize = 0;
     let mut in_cell = false;
     let mut in_value = false;
     let mut in_formula = false;
@@ -298,6 +434,7 @@ fn parse_worksheet<R: Read + Seek>(
                     b"c" => {
                         in_cell = true;
                         cell_type.clear();
+                        cell_style = 0;
                         cell_value_text.clear();
                         cell_formula_text.clear();
 
@@ -310,6 +447,10 @@ fn parse_worksheet<R: Read + Seek>(
                                 }
                                 b"t" => {
                                     cell_type = String::from_utf8_lossy(&attr.value).to_string();
+                                }
+                                b"s" => {
+                                    cell_style =
+                                        String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
                                 }
                                 _ => {}
                             }
@@ -337,12 +478,14 @@ fn parse_worksheet<R: Read + Seek>(
                 match e.name().as_ref() {
                     b"c" => {
                         if in_cell {
+                            let is_date = date_styles.get(cell_style).copied().unwrap_or(false);
                             let value = if !cell_formula_text.is_empty() {
                                 // Cell has a formula
                                 let cached = resolve_cell_value(
                                     &cell_type,
                                     &cell_value_text,
                                     shared_strings,
+                                    is_date,
                                 );
                                 let cached_value = match cached {
                                     CellValue::Empty => None,
@@ -353,7 +496,12 @@ fn parse_worksheet<R: Read + Seek>(
                                     cached_value,
                                 }
                             } else {
-                                resolve_cell_value(&cell_type, &cell_value_text, shared_strings)
+                                resolve_cell_value(
+                                    &cell_type,
+                                    &cell_value_text,
+                                    shared_strings,
+                                    is_date,
+                                )
                             };
 
                             // Ensure the row has enough columns
@@ -402,7 +550,12 @@ fn parse_worksheet<R: Read + Seek>(
 }
 
 /// Convert raw cell value text into a typed CellValue based on the cell type attribute.
-fn resolve_cell_value(cell_type: &str, raw: &str, shared_strings: &[String]) -> CellValue {
+fn resolve_cell_value(
+    cell_type: &str,
+    raw: &str,
+    shared_strings: &[String],
+    is_date: bool,
+) -> CellValue {
     if raw.is_empty() && cell_type != "inlineStr" {
         return CellValue::Empty;
     }
@@ -427,10 +580,34 @@ fn resolve_cell_value(cell_type: &str, raw: &str, shared_strings: &[String]) -> 
         "e" => CellValue::String(raw.to_string()),
         // String (str type)
         "str" => CellValue::String(raw.to_string()),
-        // Number (default or explicit "n")
+        // Number (default or explicit "n") — may be a date if style says so
         _ => {
             if let Ok(n) = raw.parse::<f64>() {
-                CellValue::Number(n)
+                if is_date {
+                    if let Some((y, mo, d, h, mi, s, us)) = excel_serial_to_datetime(n) {
+                        if h == 0 && mi == 0 && s == 0 && us == 0 && n.fract() == 0.0 {
+                            CellValue::Date {
+                                year: y,
+                                month: mo,
+                                day: d,
+                            }
+                        } else {
+                            CellValue::DateTime {
+                                year: y,
+                                month: mo,
+                                day: d,
+                                hour: h,
+                                minute: mi,
+                                second: s,
+                                microsecond: us,
+                            }
+                        }
+                    } else {
+                        CellValue::Number(n)
+                    }
+                } else {
+                    CellValue::Number(n)
+                }
             } else {
                 CellValue::String(raw.to_string())
             }
@@ -463,24 +640,32 @@ mod tests {
     fn test_resolve_cell_value() {
         let shared = vec!["hello".to_string(), "world".to_string()];
 
-        match resolve_cell_value("s", "0", &shared) {
+        match resolve_cell_value("s", "0", &shared, false) {
             CellValue::String(s) => assert_eq!(s, "hello"),
             _ => panic!("expected string"),
         }
 
-        match resolve_cell_value("", "42.5", &shared) {
+        match resolve_cell_value("", "42.5", &shared, false) {
             CellValue::Number(n) => assert!((n - 42.5).abs() < f64::EPSILON),
             _ => panic!("expected number"),
         }
 
-        match resolve_cell_value("b", "1", &shared) {
+        match resolve_cell_value("b", "1", &shared, false) {
             CellValue::Bool(b) => assert!(b),
             _ => panic!("expected bool"),
         }
 
         assert!(matches!(
-            resolve_cell_value("", "", &shared),
+            resolve_cell_value("", "", &shared, false),
             CellValue::Empty
         ));
+
+        // Date detection
+        match resolve_cell_value("", "44197", &shared, true) {
+            CellValue::Date { year, month, day } => {
+                assert_eq!((year, month, day), (2021, 1, 1));
+            }
+            other => panic!("expected date, got {other:?}"),
+        }
     }
 }
