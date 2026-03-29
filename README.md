@@ -187,7 +187,7 @@ Represents a spreadsheet formula. Pass as a cell value when writing, and receive
 - [x] Date/time cell support
 - [x] Merged cell metadata
 - [ ] Basic cell styling
-- [ ] Type stubs (`.pyi`) and `py.typed` marker for IDE autocomplete
+- [x] Type stubs (`.pyi`) and `py.typed` marker for IDE autocomplete
 - [ ] Pandas integration (`read_xlsx_df` / `to_xlsx` wrappers)
 - [ ] Runnable benchmark script for reproducible comparisons
 - [ ] Broader test corpus & fuzzing
