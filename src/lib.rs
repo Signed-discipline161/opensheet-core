@@ -246,13 +246,13 @@ impl Formula {
         }
     }
 
-    fn __eq__(&self, py: Python<'_>, other: &Formula) -> PyResult<bool> {
+    fn __eq__(&self, other: &Formula) -> PyResult<bool> {
         if self.formula != other.formula {
             return Ok(false);
         }
         match (&self.cached_value, &other.cached_value) {
             (None, None) => Ok(true),
-            (Some(a), Some(b)) => a.bind(py).eq(b.bind(py)),
+            (Some(a), Some(b)) => Python::with_gil(|py| a.bind(py).eq(b.bind(py))),
             _ => Ok(false),
         }
     }
@@ -347,6 +347,10 @@ impl XlsxWriter {
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Initialize Python's datetime C API so that cast::<PyDate>/cast::<PyDateTime>
+    // work correctly in py_to_cell (needed before first use of PyDate_Check etc.)
+    unsafe { pyo3::ffi::PyDateTime_IMPORT() };
+
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(read_xlsx, m)?)?;
     m.add_function(wrap_pyfunction!(read_sheet, m)?)?;
