@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-30
+
+### Added
+- AI/RAG extraction functions: `xlsx_to_markdown()`, `xlsx_to_text()`, `xlsx_to_chunks()` for converting spreadsheets to LLM-friendly formats
+- LangChain integration: `OpenSheetLoader` document loader with markdown, text, and chunks modes
+- LlamaIndex integration: `OpenSheetReader` data reader compatible with `SimpleDirectoryReader`
+- Automatic cell type unwrapping for extraction (Formula → cached value, FormattedCell → numeric value, StyledCell → inner value)
+
 ### Changed
 - Fix benchmark measurement bias: replace `ru_maxrss` (high-water mark) with current RSS via platform-specific APIs (`proc_pidinfo` on macOS, `/proc/self/statm` on Linux)
 - Interleave benchmark runs (`[A,B,A,B,...]` instead of `[A,A,A,B,B,B]`) to eliminate ordering bias
@@ -14,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Report mean +/- stddev alongside min time and median memory
 - Update README benchmark numbers to reflect accurate, unbiased measurements
 - Add benchmarking methodology documentation (`docs/benchmarking.md`)
+- Add `langchain-core` and `llama-index-core` to CI for full integration test coverage
 
 ### Optimized
 - Reduce read memory usage by ~25% via deferred shared-string resolution: store string indices during parsing, resolve to Python objects at the boundary
@@ -63,7 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Benchmarks vs openpyxl with runnable benchmark script
 - Zero Python dependencies
 
-[Unreleased]: https://github.com/0xNadr/opensheet-core/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/0xNadr/opensheet-core/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/0xNadr/opensheet-core/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/0xNadr/opensheet-core/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/0xNadr/opensheet-core/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/0xNadr/opensheet-core/releases/tag/v0.1.0
