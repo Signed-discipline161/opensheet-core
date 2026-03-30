@@ -52,7 +52,7 @@ class XlsxWriter:
         ...
     def write_row(
         self,
-        values: list[str | int | float | bool | datetime.date | datetime.datetime | Formula | None],
+        values: list[str | int | float | bool | datetime.date | datetime.datetime | Formula | FormattedCell | None],
     ) -> None:
         """Write a row of values to the current sheet."""
         ...
@@ -91,6 +91,21 @@ class XlsxWriter:
         exc_val: BaseException | None,
         exc_tb: Any | None,
     ) -> bool: ...
+
+class FormattedCell:
+    """A cell value with a custom number format.
+
+    Args:
+        value: The numeric value.
+        number_format: Excel number format code (e.g. ``"$#,##0.00"``, ``"0.00%"``).
+    """
+
+    value: Any
+    number_format: str
+
+    def __init__(self, value: Any, number_format: str) -> None: ...
+    def __repr__(self) -> str: ...
+    def __eq__(self, other: object) -> bool: ...
 
 class Formula:
     """A spreadsheet formula with optional cached value.
