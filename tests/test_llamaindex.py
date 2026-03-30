@@ -34,7 +34,7 @@ try:
     from llama_index.core.readers.base import BaseReader
     from llama_index.core.schema import Document
     HAS_LLAMAINDEX = True
-except ImportError:
+except (ImportError, TypeError):
     HAS_LLAMAINDEX = False
 
 
