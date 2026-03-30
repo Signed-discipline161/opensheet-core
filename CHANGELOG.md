@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Freeze panes support: `freeze_panes()` on writer, `"freeze_pane"` in reader output
 - Auto-filter support: `auto_filter()` on writer, `"auto_filter"` in reader output
 - Number format support: `FormattedCell(value, format_code)` for writing cells with custom number formats (currency, percentage, custom format strings); reader returns `FormattedCell` for formatted number cells
+- Pandas integration: `read_xlsx_df()` reads XLSX sheets into DataFrames, `to_xlsx()` writes DataFrames to XLSX; install with `pip install opensheet-core[pandas]`
 
 ## [0.1.1] - 2026-03-30
 
