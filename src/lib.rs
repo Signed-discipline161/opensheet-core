@@ -62,6 +62,18 @@ fn cell_to_py(py: Python<'_>, cell: &CellValue) -> PyResult<Py<PyAny>> {
             )?;
             Ok(dt.into_any().unbind())
         }
+        CellValue::FormattedNumber { value, format_code } => {
+            let py_value: Py<PyAny> = if value.fract() == 0.0 && value.abs() < i64::MAX as f64 {
+                (*value as i64).into_pyobject(py)?.into_any().unbind()
+            } else {
+                value.into_pyobject(py)?.into_any().unbind()
+            };
+            let fc = FormattedCell {
+                value: py_value,
+                number_format: format_code.clone(),
+            };
+            Ok(fc.into_pyobject(py)?.into_any().unbind())
+        }
         CellValue::Empty => Ok(PyNone::get(py).to_owned().into_any().unbind()),
     }
 }
@@ -83,6 +95,24 @@ fn rows_to_py(py: Python<'_>, rows: &[Vec<CellValue>]) -> PyResult<Py<PyAny>> {
 fn py_to_cell(obj: &Bound<'_, PyAny>) -> CellValue {
     if obj.is_none() {
         CellValue::Empty
+    } else if let Ok(fc) = obj.extract::<PyRef<'_, FormattedCell>>() {
+        // Extract the numeric value from the inner value
+        let py = obj.py();
+        let inner = fc.value.bind(py);
+        let value = if let Ok(i) = inner.cast::<PyInt>() {
+            match i.extract::<i64>() {
+                Ok(v) => v as f64,
+                Err(_) => 0.0,
+            }
+        } else if let Ok(f) = inner.cast::<PyFloat>() {
+            f.value()
+        } else {
+            0.0
+        };
+        CellValue::FormattedNumber {
+            value,
+            format_code: fc.number_format.clone(),
+        }
     } else if let Ok(f) = obj.extract::<PyRef<'_, Formula>>() {
         let py = obj.py();
         let cached = f.cached_value.as_ref().and_then(|v| {
@@ -307,6 +337,42 @@ impl Formula {
     }
 }
 
+/// A cell value with a custom number format.
+///
+/// Usage:
+///     from opensheet_core import FormattedCell
+///     cell = FormattedCell(1234.56, "$#,##0.00")
+///     cell = FormattedCell(0.75, "0%")
+#[pyclass]
+struct FormattedCell {
+    #[pyo3(get, set)]
+    value: Py<PyAny>,
+    #[pyo3(get, set)]
+    number_format: String,
+}
+
+#[pymethods]
+impl FormattedCell {
+    #[new]
+    fn new(value: Py<PyAny>, number_format: String) -> Self {
+        FormattedCell {
+            value,
+            number_format,
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!("FormattedCell(..., '{}')", self.number_format)
+    }
+
+    fn __eq__(&self, other: &FormattedCell) -> PyResult<bool> {
+        if self.number_format != other.number_format {
+            return Ok(false);
+        }
+        Python::try_attach(|py| self.value.bind(py).eq(other.value.bind(py))).unwrap_or(Ok(false))
+    }
+}
+
 /// Streaming XLSX writer.
 ///
 /// Usage:
@@ -471,5 +537,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sheet_names, m)?)?;
     m.add_class::<XlsxWriter>()?;
     m.add_class::<Formula>()?;
+    m.add_class::<FormattedCell>()?;
     Ok(())
 }

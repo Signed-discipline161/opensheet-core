@@ -7,7 +7,16 @@ from opensheet_core._native import (
     sheet_names,
     XlsxWriter,
     Formula,
+    FormattedCell,
 )
 
 __version__ = version()
-__all__ = ["__version__", "read_xlsx", "read_sheet", "sheet_names", "XlsxWriter", "Formula"]
+__all__ = [
+    "__version__",
+    "read_xlsx",
+    "read_sheet",
+    "sheet_names",
+    "XlsxWriter",
+    "Formula",
+    "FormattedCell",
+]

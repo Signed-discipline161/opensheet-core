@@ -25,6 +25,11 @@ pub enum CellValue {
         second: u32,
         microsecond: u32,
     },
+    /// A number with a custom number format code (e.g. "$#,##0.00", "0.00%").
+    FormattedNumber {
+        value: f64,
+        format_code: std::string::String,
+    },
     Empty,
 }
 

@@ -38,6 +38,7 @@ Existing Python spreadsheet libraries force you to choose between performance, m
 - **Auto-filter** — add drop-down filter controls to column headers
 - **Typed cell extraction** — strings, numbers, booleans, dates, datetimes, formulas, and empty cells are returned as native Python types
 - **Context manager support** — Pythonic `with` statement for safe resource management
+- **AI/RAG-ready** — convert spreadsheets to markdown, chunked text, or plain text for LLM pipelines (planned)
 - **Cross-platform** — tested on Linux, macOS, and Windows across Python 3.9–3.13
 - **Zero Python dependencies** — single native extension, no dependency tree to manage
 
@@ -276,6 +277,9 @@ OpenSheet Core is designed to be a faster, memory-efficient alternative to openp
 | **VBA/Macros** | Preserve on load (.xlsm) | Yes | Planned |
 | **Integration** | Pandas DataFrame I/O | Yes | Planned |
 | | NumPy type support | Yes | Planned |
+| **AI/RAG** | Markdown/text extraction for LLMs | — | Planned |
+| | Embedding-sized chunking | — | Planned |
+| | LangChain / LlamaIndex loaders | — | Planned |
 | **Performance** | Streaming read (constant memory) | Yes (read_only mode) | Yes (default) |
 | | Streaming write (constant memory) | Yes (write_only mode) | Yes (default) |
 
@@ -311,6 +315,14 @@ We are not trying to clone openpyxl. We are building a **fast, safe, memory-effi
 - [ ] Number formats (currency, percentage, custom format strings)
 - [ ] Pandas integration (`read_xlsx_df` / `to_xlsx`)
 
+### Phase 1.5 — AI/RAG integration
+
+- [ ] `xlsx_to_markdown()` — convert sheets to structured markdown tables for LLM consumption
+- [ ] `xlsx_to_chunks()` — yield embedding-sized chunks with header attachment and merge-aware boundaries
+- [ ] `xlsx_to_text()` — plain text extraction for simple pipelines and search indexes
+- [ ] LangChain `OpenSheetLoader` document loader
+- [ ] LlamaIndex `OpenSheetReader` data connector
+
 ### Phase 2 — Broader compatibility
 
 - [ ] Named ranges / defined names
@@ -330,6 +342,12 @@ We are not trying to clone openpyxl. We are building a **fast, safe, memory-effi
 - [ ] NumPy type support
 - [ ] Broader test corpus and fuzzing
 - [ ] Security hardening (XML attack prevention)
+
+### Docs & community
+
+- [ ] Migration guide: openpyxl → opensheet-core (side-by-side code comparisons)
+- [ ] FastAPI/Flask streaming XLSX download examples
+- [ ] Dedicated benchmark page with chart visualizations
 
 ## Project Status
 

@@ -71,6 +71,15 @@ pub struct StreamingXlsxWriter<W: Write + Seek> {
     pending_row_heights: HashMap<u32, f64>,
     pending_freeze_pane: Option<(u32, u32)>,
     pending_auto_filter: Option<String>,
+    /// Custom number format codes registered during writing.
+    /// Each entry is (format_code, numFmtId, xfId).
+    custom_num_fmts: Vec<(String, u32, u32)>,
+    /// Maps format_code -> xfId for quick lookup.
+    format_to_xf: HashMap<String, u32>,
+    /// Next available numFmtId for custom formats (starts at 166, after date 164 and datetime 165).
+    next_num_fmt_id: u32,
+    /// Next available xfId (starts at 3, after general 0, date 1, datetime 2).
+    next_xf_id: u32,
 }
 
 impl<W: Write + Seek> StreamingXlsxWriter<W> {
@@ -89,6 +98,10 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
             pending_row_heights: HashMap::new(),
             pending_freeze_pane: None,
             pending_auto_filter: None,
+            custom_num_fmts: Vec::new(),
+            format_to_xf: HashMap::new(),
+            next_num_fmt_id: 166,
+            next_xf_id: 3,
         }
     }
 
@@ -303,6 +316,13 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
                     )?;
                     self.has_datetimes = true;
                 }
+                CellValue::FormattedNumber { value, format_code } => {
+                    let xf_id = self.register_format(format_code);
+                    write!(
+                        self.zip()?,
+                        "<c r=\"{cell_ref}\" s=\"{xf_id}\"><v>{value}</v></c>"
+                    )?;
+                }
                 CellValue::Empty => {}
             }
         }
@@ -365,6 +385,22 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         }
         self.pending_auto_filter = Some(range.to_string());
         Ok(())
+    }
+
+    /// Register a custom number format and return its xf index.
+    /// If the format is already registered, returns the existing xf index.
+    fn register_format(&mut self, format_code: &str) -> u32 {
+        if let Some(&xf_id) = self.format_to_xf.get(format_code) {
+            return xf_id;
+        }
+        let num_fmt_id = self.next_num_fmt_id;
+        let xf_id = self.next_xf_id;
+        self.custom_num_fmts
+            .push((format_code.to_string(), num_fmt_id, xf_id));
+        self.format_to_xf.insert(format_code.to_string(), xf_id);
+        self.next_num_fmt_id += 1;
+        self.next_xf_id += 1;
+        xf_id
     }
 
     /// Set the height of a row (0-based index) in points.
@@ -511,27 +547,45 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
              </Relationships>"
         )?;
 
-        // Write xl/styles.xml with date/datetime formats
+        // Write xl/styles.xml with date/datetime formats and any custom number formats
         self.zip()?.start_file("xl/styles.xml", options)?;
+        let custom_fmts = std::mem::take(&mut self.custom_num_fmts);
+        let num_fmts_count = 2 + custom_fmts.len();
+        let cell_xfs_count = 3 + custom_fmts.len();
         write!(
             self.zip()?,
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
              <styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\
-             <numFmts count=\"2\">\
+             <numFmts count=\"{num_fmts_count}\">\
              <numFmt numFmtId=\"164\" formatCode=\"yyyy\\-mm\\-dd\"/>\
-             <numFmt numFmtId=\"165\" formatCode=\"yyyy\\-mm\\-dd\\ hh:mm:ss\"/>\
-             </numFmts>\
+             <numFmt numFmtId=\"165\" formatCode=\"yyyy\\-mm\\-dd\\ hh:mm:ss\"/>"
+        )?;
+        for (format_code, num_fmt_id, _xf_id) in &custom_fmts {
+            let escaped = xml_escape(format_code);
+            write!(
+                self.zip()?,
+                "<numFmt numFmtId=\"{num_fmt_id}\" formatCode=\"{escaped}\"/>"
+            )?;
+        }
+        write!(
+            self.zip()?,
+            "</numFmts>\
              <fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>\
              <fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills>\
              <borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>\
              <cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>\
-             <cellXfs count=\"3\">\
+             <cellXfs count=\"{cell_xfs_count}\">\
              <xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>\
              <xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>\
-             <xf numFmtId=\"165\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>\
-             </cellXfs>\
-             </styleSheet>"
+             <xf numFmtId=\"165\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"
         )?;
+        for (_format_code, num_fmt_id, _xf_id) in &custom_fmts {
+            write!(
+                self.zip()?,
+                "<xf numFmtId=\"{num_fmt_id}\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"
+            )?;
+        }
+        write!(self.zip()?, "</cellXfs></styleSheet>")?;
 
         // Take ownership of the ZipWriter to call finish()
         let zip = self.zip.take().unwrap();
@@ -763,6 +817,103 @@ mod tests {
         buf.set_position(0);
         let sheets = read_xlsx(buf).unwrap();
         assert_eq!(sheets[0].auto_filter, Some("A1:B1".to_string()));
+    }
+
+    #[test]
+    fn test_formatted_number_roundtrip() {
+        use crate::reader::xlsx::read_xlsx;
+        use std::io::Cursor;
+
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let mut writer = StreamingXlsxWriter::new(&mut buf);
+            writer.add_sheet("Formats").unwrap();
+            writer
+                .write_row(&[
+                    CellValue::String("Price".to_string()),
+                    CellValue::String("Percentage".to_string()),
+                ])
+                .unwrap();
+            writer
+                .write_row(&[
+                    CellValue::FormattedNumber {
+                        value: 1234.56,
+                        format_code: "$#,##0.00".to_string(),
+                    },
+                    CellValue::FormattedNumber {
+                        value: 0.75,
+                        format_code: "0.00%".to_string(),
+                    },
+                ])
+                .unwrap();
+            writer.close().unwrap();
+        }
+
+        buf.set_position(0);
+        let sheets = read_xlsx(buf).unwrap();
+        assert_eq!(sheets.len(), 1);
+
+        // Row 2, Col 0: formatted number with currency
+        match &sheets[0].rows[1][0] {
+            CellValue::FormattedNumber { value, format_code } => {
+                assert!((value - 1234.56).abs() < f64::EPSILON);
+                assert_eq!(format_code, "$#,##0.00");
+            }
+            other => panic!("expected FormattedNumber, got {other:?}"),
+        }
+
+        // Row 2, Col 1: formatted number with percentage
+        match &sheets[0].rows[1][1] {
+            CellValue::FormattedNumber { value, format_code } => {
+                assert!((value - 0.75).abs() < f64::EPSILON);
+                assert_eq!(format_code, "0.00%");
+            }
+            other => panic!("expected FormattedNumber, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_formatted_number_dedup() {
+        use crate::reader::xlsx::read_xlsx;
+        use std::io::Cursor;
+
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let mut writer = StreamingXlsxWriter::new(&mut buf);
+            writer.add_sheet("Dedup").unwrap();
+            // Same format code used for two cells — should reuse the same xf index
+            writer
+                .write_row(&[
+                    CellValue::FormattedNumber {
+                        value: 100.0,
+                        format_code: "#,##0".to_string(),
+                    },
+                    CellValue::FormattedNumber {
+                        value: 200.0,
+                        format_code: "#,##0".to_string(),
+                    },
+                ])
+                .unwrap();
+            writer.close().unwrap();
+        }
+
+        buf.set_position(0);
+        let sheets = read_xlsx(buf).unwrap();
+
+        match &sheets[0].rows[0][0] {
+            CellValue::FormattedNumber { value, format_code } => {
+                assert!((value - 100.0).abs() < f64::EPSILON);
+                assert_eq!(format_code, "#,##0");
+            }
+            other => panic!("expected FormattedNumber, got {other:?}"),
+        }
+        match &sheets[0].rows[0][1] {
+            CellValue::FormattedNumber { value, format_code } => {
+                assert!((value - 200.0).abs() < f64::EPSILON);
+                assert_eq!(format_code, "#,##0");
+            }
+            other => panic!("expected FormattedNumber, got {other:?}"),
+        }
     }
 
     #[test]

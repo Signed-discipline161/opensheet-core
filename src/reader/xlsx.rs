@@ -70,13 +70,13 @@ pub fn read_xlsx<R: Read + Seek>(reader: R) -> Result<Vec<Sheet>, XlsxError> {
     // 3. Parse shared strings
     let shared_strings = parse_shared_strings(&mut archive)?;
 
-    // 4. Parse styles for date detection
-    let date_styles = parse_styles(&mut archive)?;
+    // 4. Parse styles for date detection and number formats
+    let styles = parse_styles(&mut archive)?;
 
     // 5. Parse each worksheet
     let mut sheets = Vec::with_capacity(sheet_infos.len());
     for info in &sheet_infos {
-        let data = parse_worksheet(&mut archive, &info.path, &shared_strings, &date_styles)?;
+        let data = parse_worksheet(&mut archive, &info.path, &shared_strings, &styles)?;
         sheets.push(Sheet {
             name: info.name.clone(),
             rows: data.rows,
@@ -235,9 +235,17 @@ fn parse_shared_strings<R: Read + Seek>(
     Ok(strings)
 }
 
+/// Style info for a single xf entry.
+#[derive(Debug, Clone)]
+struct StyleInfo {
+    is_date: bool,
+    /// The format code string, if it's a custom (non-built-in, non-date) format.
+    format_code: Option<String>,
+}
+
 /// Parse xl/styles.xml to determine which cell style indices use date number formats.
-/// Returns a set of xf indices (0-based) that are date-formatted.
-fn parse_styles<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<Vec<bool>, XlsxError> {
+/// Returns style info per xf index.
+fn parse_styles<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<Vec<StyleInfo>, XlsxError> {
     let file = match archive.by_name("xl/styles.xml") {
         Ok(f) => f,
         Err(_) => return Ok(Vec::new()),
@@ -311,13 +319,25 @@ fn parse_styles<R: Read + Seek>(archive: &mut ZipArchive<R>) -> Result<Vec<bool>
         buf.clear();
     }
 
-    // Build a bool vec: is_date[xf_index] = true if the format is a date format
-    let is_date: Vec<bool> = xf_num_fmt_ids
+    // Build style info per xf index
+    let styles: Vec<StyleInfo> = xf_num_fmt_ids
         .iter()
-        .map(|&fmt_id| is_date_format(fmt_id, &custom_formats))
+        .map(|&fmt_id| {
+            let is_date = is_date_format(fmt_id, &custom_formats);
+            let format_code = if is_date || fmt_id == 0 {
+                None
+            } else {
+                // Return the format code for non-date, non-general formats
+                get_format_code(fmt_id, &custom_formats)
+            };
+            StyleInfo {
+                is_date,
+                format_code,
+            }
+        })
         .collect();
 
-    Ok(is_date)
+    Ok(styles)
 }
 
 /// Check if a number format ID represents a date/time format.
@@ -366,6 +386,44 @@ fn is_date_format_code(code: &str) -> bool {
     has_date || has_time || (has_m && !cleaned.contains('#') && !cleaned.contains('0'))
 }
 
+/// Get the format code string for a numFmtId.
+/// Returns None for general (0) format. Returns built-in code for IDs 1-49,
+/// or looks up custom formats for IDs >= 164.
+fn get_format_code(num_fmt_id: u32, custom_formats: &HashMap<u32, String>) -> Option<String> {
+    // Built-in number format codes (non-date ones)
+    let builtin = match num_fmt_id {
+        0 => return None, // General
+        1 => "0",
+        2 => "0.00",
+        3 => "#,##0",
+        4 => "#,##0.00",
+        5 => "$#,##0_);($#,##0)",
+        6 => "$#,##0_);[Red]($#,##0)",
+        7 => "$#,##0.00_);($#,##0.00)",
+        8 => "$#,##0.00_);[Red]($#,##0.00)",
+        9 => "0%",
+        10 => "0.00%",
+        11 => "0.00E+00",
+        12 => "# ?/?",
+        13 => "# ??/??",
+        37 => "#,##0_);(#,##0)",
+        38 => "#,##0_);[Red](#,##0)",
+        39 => "#,##0.00_);(#,##0.00)",
+        40 => "#,##0.00_);[Red](#,##0.00)",
+        41 => r#"_(* #,##0_);_(* (#,##0);_(* "-"_);_(@_)"#,
+        42 => r#"_($* #,##0_);_($* (#,##0);_($* "-"_);_(@_)"#,
+        43 => r#"_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)"#,
+        44 => r#"_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)"#,
+        48 => "##0.0E+0",
+        49 => "@",
+        _ => {
+            // Custom format or date format (dates already filtered out)
+            return custom_formats.get(&num_fmt_id).cloned();
+        }
+    };
+    Some(builtin.to_string())
+}
+
 /// Parse a column reference like "A1", "AA5", "BZ100" and return the 0-based column index.
 fn col_to_index(col_ref: &str) -> usize {
     let mut index: usize = 0;
@@ -409,7 +467,7 @@ fn parse_worksheet<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     path: &str,
     shared_strings: &[String],
-    date_styles: &[bool],
+    styles: &[StyleInfo],
 ) -> Result<WorksheetData, XlsxError> {
     let file = archive.by_name(path)?;
     let mut reader = Reader::from_reader(BufReader::new(file));
@@ -582,7 +640,9 @@ fn parse_worksheet<R: Read + Seek>(
                 match e.name().as_ref() {
                     b"c" => {
                         if in_cell {
-                            let is_date = date_styles.get(cell_style).copied().unwrap_or(false);
+                            let style_info = styles.get(cell_style);
+                            let is_date = style_info.map(|s| s.is_date).unwrap_or(false);
+                            let format_code = style_info.and_then(|s| s.format_code.clone());
                             let value = if !cell_formula_text.is_empty() {
                                 // Cell has a formula
                                 let cached = resolve_cell_value(
@@ -590,6 +650,7 @@ fn parse_worksheet<R: Read + Seek>(
                                     &cell_value_text,
                                     shared_strings,
                                     is_date,
+                                    &None,
                                 );
                                 let cached_value = match cached {
                                     CellValue::Empty => None,
@@ -605,6 +666,7 @@ fn parse_worksheet<R: Read + Seek>(
                                     &cell_value_text,
                                     shared_strings,
                                     is_date,
+                                    &format_code,
                                 )
                             };
 
@@ -736,6 +798,7 @@ fn resolve_cell_value(
     raw: &str,
     shared_strings: &[String],
     is_date: bool,
+    format_code: &Option<String>,
 ) -> CellValue {
     if raw.is_empty() && cell_type != "inlineStr" {
         return CellValue::Empty;
@@ -786,6 +849,11 @@ fn resolve_cell_value(
                     } else {
                         CellValue::Number(n)
                     }
+                } else if let Some(code) = format_code {
+                    CellValue::FormattedNumber {
+                        value: n,
+                        format_code: code.clone(),
+                    }
                 } else {
                     CellValue::Number(n)
                 }
@@ -821,32 +889,44 @@ mod tests {
     fn test_resolve_cell_value() {
         let shared = vec!["hello".to_string(), "world".to_string()];
 
-        match resolve_cell_value("s", "0", &shared, false) {
+        let none_fmt = None;
+
+        match resolve_cell_value("s", "0", &shared, false, &none_fmt) {
             CellValue::String(s) => assert_eq!(s, "hello"),
             _ => panic!("expected string"),
         }
 
-        match resolve_cell_value("", "42.5", &shared, false) {
+        match resolve_cell_value("", "42.5", &shared, false, &none_fmt) {
             CellValue::Number(n) => assert!((n - 42.5).abs() < f64::EPSILON),
             _ => panic!("expected number"),
         }
 
-        match resolve_cell_value("b", "1", &shared, false) {
+        match resolve_cell_value("b", "1", &shared, false, &none_fmt) {
             CellValue::Bool(b) => assert!(b),
             _ => panic!("expected bool"),
         }
 
         assert!(matches!(
-            resolve_cell_value("", "", &shared, false),
+            resolve_cell_value("", "", &shared, false, &none_fmt),
             CellValue::Empty
         ));
 
         // Date detection
-        match resolve_cell_value("", "44197", &shared, true) {
+        match resolve_cell_value("", "44197", &shared, true, &none_fmt) {
             CellValue::Date { year, month, day } => {
                 assert_eq!((year, month, day), (2021, 1, 1));
             }
             other => panic!("expected date, got {other:?}"),
+        }
+
+        // Formatted number detection
+        let pct_fmt = Some("0.00%".to_string());
+        match resolve_cell_value("", "0.75", &shared, false, &pct_fmt) {
+            CellValue::FormattedNumber { value, format_code } => {
+                assert!((value - 0.75).abs() < f64::EPSILON);
+                assert_eq!(format_code, "0.00%");
+            }
+            other => panic!("expected FormattedNumber, got {other:?}"),
         }
     }
 }

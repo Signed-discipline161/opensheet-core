@@ -658,3 +658,144 @@ def test_auto_filter_openpyxl_interop(tmp_xlsx):
 
     sheets = opensheet_core.read_xlsx(tmp_xlsx)
     assert sheets[0]["auto_filter"] == "A1:C1"
+
+
+# --- Number format tests ---
+
+
+def test_formatted_cell_write_currency(tmp_xlsx):
+    """Write a currency-formatted cell and read it back."""
+    with opensheet_core.XlsxWriter(tmp_xlsx) as writer:
+        writer.add_sheet("Sheet1")
+        writer.write_row(["Price"])
+        writer.write_row([opensheet_core.FormattedCell(1234.56, "$#,##0.00")])
+
+    sheets = opensheet_core.read_xlsx(tmp_xlsx)
+    cell = sheets[0]["rows"][1][0]
+    assert isinstance(cell, opensheet_core.FormattedCell)
+    assert cell.value == 1234.56
+    assert cell.number_format == "$#,##0.00"
+
+
+def test_formatted_cell_write_percentage(tmp_xlsx):
+    """Write a percentage-formatted cell and read it back."""
+    with opensheet_core.XlsxWriter(tmp_xlsx) as writer:
+        writer.add_sheet("Sheet1")
+        writer.write_row([opensheet_core.FormattedCell(0.75, "0.00%")])
+
+    sheets = opensheet_core.read_xlsx(tmp_xlsx)
+    cell = sheets[0]["rows"][0][0]
+    assert isinstance(cell, opensheet_core.FormattedCell)
+    assert abs(cell.value - 0.75) < 1e-9
+    assert cell.number_format == "0.00%"
+
+
+def test_formatted_cell_write_custom_format(tmp_xlsx):
+    """Write a custom number format and read it back."""
+    with opensheet_core.XlsxWriter(tmp_xlsx) as writer:
+        writer.add_sheet("Sheet1")
+        writer.write_row([opensheet_core.FormattedCell(9876.5, "#,##0.0")])
+
+    sheets = opensheet_core.read_xlsx(tmp_xlsx)
+    cell = sheets[0]["rows"][0][0]
+    assert isinstance(cell, opensheet_core.FormattedCell)
+    assert abs(cell.value - 9876.5) < 1e-9
+    assert cell.number_format == "#,##0.0"
+
+
+def test_formatted_cell_multiple_formats(tmp_xlsx):
+    """Multiple different formats in the same row."""
+    with opensheet_core.XlsxWriter(tmp_xlsx) as writer:
+        writer.add_sheet("Sheet1")
+        writer.write_row([
+            opensheet_core.FormattedCell(100, "$#,##0"),
+            opensheet_core.FormattedCell(0.5, "0%"),
+            opensheet_core.FormattedCell(3.14159, "0.00"),
+        ])
+
+    sheets = opensheet_core.read_xlsx(tmp_xlsx)
+    row = sheets[0]["rows"][0]
+    assert row[0].number_format == "$#,##0"
+    assert row[1].number_format == "0%"
+    assert row[2].number_format == "0.00"
+
+
+def test_formatted_cell_same_format_dedup(tmp_xlsx):
+    """Same format code used multiple times should work correctly."""
+    with opensheet_core.XlsxWriter(tmp_xlsx) as writer:
+        writer.add_sheet("Sheet1")
+        writer.write_row([
+            opensheet_core.FormattedCell(10, "#,##0"),
+            opensheet_core.FormattedCell(20, "#,##0"),
+        ])
+
+    sheets = opensheet_core.read_xlsx(tmp_xlsx)
+    row = sheets[0]["rows"][0]
+    assert row[0].number_format == "#,##0"
+    assert row[0].value == 10
+    assert row[1].number_format == "#,##0"
+    assert row[1].value == 20
+
+
+def test_formatted_cell_mixed_with_plain(tmp_xlsx):
+    """Formatted cells mixed with plain values in the same row."""
+    with opensheet_core.XlsxWriter(tmp_xlsx) as writer:
+        writer.add_sheet("Sheet1")
+        writer.write_row([
+            "Label",
+            42,
+            opensheet_core.FormattedCell(99.99, "$#,##0.00"),
+            True,
+        ])
+
+    sheets = opensheet_core.read_xlsx(tmp_xlsx)
+    row = sheets[0]["rows"][0]
+    assert row[0] == "Label"
+    assert row[1] == 42
+    assert isinstance(row[2], opensheet_core.FormattedCell)
+    assert row[2].value == 99.99
+    assert row[2].number_format == "$#,##0.00"
+    assert row[3] is True
+
+
+def test_formatted_cell_repr():
+    """FormattedCell has a useful repr."""
+    fc = opensheet_core.FormattedCell(100, "0.00%")
+    assert "0.00%" in repr(fc)
+
+
+def test_formatted_cell_equality():
+    """FormattedCell equality comparison."""
+    a = opensheet_core.FormattedCell(100, "0%")
+    b = opensheet_core.FormattedCell(100, "0%")
+    c = opensheet_core.FormattedCell(100, "0.00%")
+    assert a == b
+    assert a != c
+
+
+def test_formatted_cell_with_integer(tmp_xlsx):
+    """FormattedCell works with integer values."""
+    with opensheet_core.XlsxWriter(tmp_xlsx) as writer:
+        writer.add_sheet("Sheet1")
+        writer.write_row([opensheet_core.FormattedCell(1000, "#,##0")])
+
+    sheets = opensheet_core.read_xlsx(tmp_xlsx)
+    cell = sheets[0]["rows"][0][0]
+    assert isinstance(cell, opensheet_core.FormattedCell)
+    assert cell.value == 1000
+    assert cell.number_format == "#,##0"
+
+
+def test_formatted_cell_roundtrip_multiple_sheets(tmp_xlsx):
+    """Formatted cells work across multiple sheets."""
+    with opensheet_core.XlsxWriter(tmp_xlsx) as writer:
+        writer.add_sheet("Prices")
+        writer.write_row([opensheet_core.FormattedCell(19.99, "$#,##0.00")])
+        writer.add_sheet("Rates")
+        writer.write_row([opensheet_core.FormattedCell(0.05, "0.00%")])
+
+    sheets = opensheet_core.read_xlsx(tmp_xlsx)
+    assert sheets[0]["rows"][0][0].number_format == "$#,##0.00"
+    assert abs(sheets[0]["rows"][0][0].value - 19.99) < 1e-9
+    assert sheets[1]["rows"][0][0].number_format == "0.00%"
+    assert abs(sheets[1]["rows"][0][0].value - 0.05) < 1e-9
