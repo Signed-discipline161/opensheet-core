@@ -443,23 +443,17 @@ fn parse_worksheet<R: Read + Seek>(
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"min" => {
-                                    min = String::from_utf8_lossy(&attr.value)
-                                        .parse()
-                                        .unwrap_or(0);
+                                    min = String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
                                 }
                                 b"max" => {
-                                    max = String::from_utf8_lossy(&attr.value)
-                                        .parse()
-                                        .unwrap_or(0);
+                                    max = String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
                                 }
                                 b"width" => {
-                                    width = String::from_utf8_lossy(&attr.value)
-                                        .parse()
-                                        .unwrap_or(0.0);
+                                    width =
+                                        String::from_utf8_lossy(&attr.value).parse().unwrap_or(0.0);
                                 }
                                 b"customWidth" => {
-                                    custom_width =
-                                        String::from_utf8_lossy(&attr.value) == "1";
+                                    custom_width = String::from_utf8_lossy(&attr.value) == "1";
                                 }
                                 _ => {}
                             }
@@ -486,13 +480,11 @@ fn parse_worksheet<R: Read + Seek>(
                                     current_row = row_num - 1;
                                 }
                                 b"ht" => {
-                                    height = String::from_utf8_lossy(&attr.value)
-                                        .parse()
-                                        .unwrap_or(0.0);
+                                    height =
+                                        String::from_utf8_lossy(&attr.value).parse().unwrap_or(0.0);
                                 }
                                 b"customHeight" => {
-                                    custom_height =
-                                        String::from_utf8_lossy(&attr.value) == "1";
+                                    custom_height = String::from_utf8_lossy(&attr.value) == "1";
                                 }
                                 _ => {}
                             }
@@ -619,19 +611,13 @@ fn parse_worksheet<R: Read + Seek>(
                 for attr in e.attributes().flatten() {
                     match attr.key.as_ref() {
                         b"min" => {
-                            min = String::from_utf8_lossy(&attr.value)
-                                .parse()
-                                .unwrap_or(0);
+                            min = String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
                         }
                         b"max" => {
-                            max = String::from_utf8_lossy(&attr.value)
-                                .parse()
-                                .unwrap_or(0);
+                            max = String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
                         }
                         b"width" => {
-                            width = String::from_utf8_lossy(&attr.value)
-                                .parse()
-                                .unwrap_or(0.0);
+                            width = String::from_utf8_lossy(&attr.value).parse().unwrap_or(0.0);
                         }
                         b"customWidth" => {
                             custom_width = String::from_utf8_lossy(&attr.value) == "1";
