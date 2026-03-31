@@ -264,7 +264,9 @@ fn parse_core_properties<R: Read + Seek>(
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
                 let local = e.local_name();
-                let tag = std::str::from_utf8(local.as_ref()).unwrap_or("").to_string();
+                let tag = std::str::from_utf8(local.as_ref())
+                    .unwrap_or("")
+                    .to_string();
                 match tag.as_str() {
                     "title" | "subject" | "creator" | "keywords" | "description"
                     | "lastModifiedBy" | "category" | "created" | "modified" => {
@@ -328,8 +330,7 @@ fn parse_custom_properties<R: Read + Seek>(
                 if tag == "property" {
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"name" {
-                            current_name =
-                                Some(String::from_utf8_lossy(&attr.value).to_string());
+                            current_name = Some(String::from_utf8_lossy(&attr.value).to_string());
                         }
                     }
                 } else if current_name.is_some() {
@@ -1418,8 +1419,7 @@ fn parse_worksheet<R: Read + Seek>(
                                         Some(String::from_utf8_lossy(&attr.value).to_string());
                                 }
                                 b"sqref" => {
-                                    dv.sqref =
-                                        String::from_utf8_lossy(&attr.value).to_string();
+                                    dv.sqref = String::from_utf8_lossy(&attr.value).to_string();
                                 }
                                 b"allowBlank" => {
                                     dv.allow_blank = attr.value.as_ref() == b"1";

@@ -738,9 +738,10 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
     /// "last_modified_by", "category".
     pub fn set_document_property(&mut self, key: &str, value: &str) -> Result<(), XlsxWriteError> {
         match key {
-            "title" | "subject" | "creator" | "keywords" | "description"
-            | "last_modified_by" | "category" => {
-                self.doc_properties.insert(key.to_string(), value.to_string());
+            "title" | "subject" | "creator" | "keywords" | "description" | "last_modified_by"
+            | "category" => {
+                self.doc_properties
+                    .insert(key.to_string(), value.to_string());
                 Ok(())
             }
             _ => Err(XlsxWriteError::InvalidState(format!(
@@ -751,11 +752,7 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
     }
 
     /// Set a custom document property (arbitrary key-value pair).
-    pub fn set_custom_property(
-        &mut self,
-        name: &str,
-        value: &str,
-    ) -> Result<(), XlsxWriteError> {
+    pub fn set_custom_property(&mut self, name: &str, value: &str) -> Result<(), XlsxWriteError> {
         if name.is_empty() {
             return Err(XlsxWriteError::InvalidState(
                 "Custom property name cannot be empty.".to_string(),
@@ -986,7 +983,11 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
                 let count = dvs.len();
                 write!(self.zip()?, "<dataValidations count=\"{count}\">")?;
                 for dv in &dvs {
-                    write!(self.zip()?, "<dataValidation type=\"{}\"", xml_escape(&dv.validation_type))?;
+                    write!(
+                        self.zip()?,
+                        "<dataValidation type=\"{}\"",
+                        xml_escape(&dv.validation_type)
+                    )?;
                     if let Some(ref op) = dv.operator {
                         write!(self.zip()?, " operator=\"{}\"", xml_escape(op))?;
                     }
@@ -1229,21 +1230,15 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
                     "title" => write!(self.zip()?, "<dc:title>{escaped}</dc:title>")?,
                     "subject" => write!(self.zip()?, "<dc:subject>{escaped}</dc:subject>")?,
                     "creator" => write!(self.zip()?, "<dc:creator>{escaped}</dc:creator>")?,
-                    "keywords" => {
-                        write!(self.zip()?, "<cp:keywords>{escaped}</cp:keywords>")?
-                    }
+                    "keywords" => write!(self.zip()?, "<cp:keywords>{escaped}</cp:keywords>")?,
                     "description" => {
                         write!(self.zip()?, "<dc:description>{escaped}</dc:description>")?
                     }
-                    "last_modified_by" => {
-                        write!(
-                            self.zip()?,
-                            "<cp:lastModifiedBy>{escaped}</cp:lastModifiedBy>"
-                        )?
-                    }
-                    "category" => {
-                        write!(self.zip()?, "<cp:category>{escaped}</cp:category>")?
-                    }
+                    "last_modified_by" => write!(
+                        self.zip()?,
+                        "<cp:lastModifiedBy>{escaped}</cp:lastModifiedBy>"
+                    )?,
+                    "category" => write!(self.zip()?, "<cp:category>{escaped}</cp:category>")?,
                     _ => {}
                 }
             }
