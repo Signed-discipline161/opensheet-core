@@ -604,5 +604,5 @@ Contributions are welcome! Here are some great ways to get involved:
 ---
 
 <p align="center">
-  <sub>Built with Rust and PyO3 &nbsp;|&nbsp; Open digital infrastructure for the Python ecosystem</sub>
+  <sub>Built with Rust and PyO3, with substantial AI assistance (Claude) &nbsp;|&nbsp; Open digital infrastructure for the Python ecosystem</sub>
 </p>
