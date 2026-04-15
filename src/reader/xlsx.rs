@@ -7,8 +7,6 @@ use zip::ZipArchive;
 
 use crate::types::{excel_serial_to_datetime, CellStyle, CellValue, Sheet};
 
-// ---------- Security limits ----------
-
 /// Maximum decompressed size of a single ZIP entry (256 MB).
 const MAX_ZIP_ENTRY_SIZE: u64 = 256 * 1024 * 1024;
 
@@ -29,7 +27,6 @@ fn check_zip_entry_size(name: &str, size: u64) -> Result<(), XlsxError> {
     Ok(())
 }
 
-/// Errors that can occur during XLSX reading.
 #[derive(Debug)]
 pub enum XlsxError {
     Zip(zip::result::ZipError),
@@ -73,7 +70,6 @@ impl From<XlsxError> for pyo3::PyErr {
     }
 }
 
-/// Represents the relationship between sheet IDs and their file paths.
 struct SheetInfo {
     name: String,
     path: String,
@@ -81,7 +77,6 @@ struct SheetInfo {
     state: String,
 }
 
-/// A defined name (named range) from the workbook.
 #[derive(Debug, Clone)]
 pub struct DefinedName {
     pub name: String,
@@ -90,7 +85,6 @@ pub struct DefinedName {
     pub sheet_index: Option<usize>,
 }
 
-/// Document core properties from docProps/core.xml.
 #[derive(Debug, Clone, Default)]
 pub struct DocumentProperties {
     pub title: Option<String>,
@@ -104,14 +98,12 @@ pub struct DocumentProperties {
     pub modified: Option<String>,
 }
 
-/// A custom document property (key-value pair).
 #[derive(Debug, Clone)]
 pub struct CustomProperty {
     pub name: String,
     pub value: String,
 }
 
-/// A data validation rule applied to a cell range.
 #[derive(Debug, Clone)]
 pub struct DataValidation {
     pub validation_type: String,
@@ -129,7 +121,6 @@ pub struct DataValidation {
     pub error_style: Option<String>,
 }
 
-/// A comment on a cell.
 #[derive(Debug, Clone)]
 pub struct Comment {
     pub cell: String,
@@ -137,7 +128,6 @@ pub struct Comment {
     pub text: String,
 }
 
-/// A hyperlink on a cell.
 #[derive(Debug, Clone)]
 pub struct Hyperlink {
     pub cell: String,
@@ -145,7 +135,6 @@ pub struct Hyperlink {
     pub tooltip: Option<String>,
 }
 
-/// Sheet protection settings.
 #[derive(Debug, Clone)]
 pub struct SheetProtection {
     pub sheet: bool,
@@ -167,14 +156,12 @@ pub struct SheetProtection {
     pub select_unlocked_cells: bool,
 }
 
-/// A column in a structured table.
 #[derive(Debug, Clone)]
 pub struct TableColumn {
     pub id: u32,
     pub name: String,
 }
 
-/// A structured table definition.
 #[derive(Debug, Clone)]
 pub struct TableDef {
     pub name: String,
@@ -303,7 +290,6 @@ pub fn read_single_sheet<R: Read + Seek>(
     Ok((sheet, shared_strings))
 }
 
-/// List sheet names without parsing worksheet data.
 pub fn read_sheet_names<R: Read + Seek>(reader: R) -> Result<Vec<String>, XlsxError> {
     let mut archive = ZipArchive::new(reader)?;
     let rels = parse_workbook_rels(&mut archive)?;
@@ -311,7 +297,6 @@ pub fn read_sheet_names<R: Read + Seek>(reader: R) -> Result<Vec<String>, XlsxEr
     Ok(sheet_infos.into_iter().map(|s| s.name).collect())
 }
 
-/// Read document properties (core + custom) from an XLSX file.
 pub fn read_document_properties<R: Read + Seek>(
     reader: R,
 ) -> Result<(DocumentProperties, Vec<CustomProperty>), XlsxError> {
@@ -321,7 +306,6 @@ pub fn read_document_properties<R: Read + Seek>(
     Ok((core, custom))
 }
 
-/// Read defined names (named ranges) without parsing worksheet data.
 pub fn read_defined_names<R: Read + Seek>(reader: R) -> Result<Vec<DefinedName>, XlsxError> {
     let mut archive = ZipArchive::new(reader)?;
     let rels = parse_workbook_rels(&mut archive)?;
@@ -329,7 +313,6 @@ pub fn read_defined_names<R: Read + Seek>(reader: R) -> Result<Vec<DefinedName>,
     Ok(defined_names)
 }
 
-/// Parse docProps/core.xml for Dublin Core metadata.
 fn parse_core_properties<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
 ) -> Result<DocumentProperties, XlsxError> {
@@ -390,7 +373,6 @@ fn parse_core_properties<R: Read + Seek>(
     Ok(props)
 }
 
-/// Parse docProps/custom.xml for custom properties.
 fn parse_custom_properties<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
 ) -> Result<Vec<CustomProperty>, XlsxError> {
@@ -450,7 +432,6 @@ fn parse_custom_properties<R: Read + Seek>(
     Ok(properties)
 }
 
-/// Parse xl/_rels/workbook.xml.rels to get rId -> target path mapping.
 fn parse_workbook_rels<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
 ) -> Result<HashMap<String, String>, XlsxError> {
@@ -501,7 +482,6 @@ fn parse_workbook_rels<R: Read + Seek>(
     Ok(rels)
 }
 
-/// Parse xl/workbook.xml to get sheet names and their relationship IDs.
 fn parse_workbook<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     rels: &HashMap<String, String>,
@@ -585,7 +565,6 @@ fn parse_workbook<R: Read + Seek>(
     Ok((sheets, defined_names))
 }
 
-/// Parse xl/sharedStrings.xml to build the shared string table.
 fn parse_shared_strings<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
 ) -> Result<Vec<String>, XlsxError> {
@@ -645,9 +624,6 @@ fn parse_shared_strings<R: Read + Seek>(
     Ok(strings)
 }
 
-// ---------- Style parsing types ----------
-
-/// Parsed font info from styles.xml.
 #[derive(Debug, Clone, Default)]
 struct ParsedFont {
     bold: bool,
@@ -658,21 +634,18 @@ struct ParsedFont {
     color: Option<String>,
 }
 
-/// Parsed fill info from styles.xml.
 #[derive(Debug, Clone, Default)]
 struct ParsedFill {
     pattern_type: Option<String>,
     fg_color: Option<String>,
 }
 
-/// Parsed border side info.
 #[derive(Debug, Clone, Default)]
 struct ParsedBorderSide {
     style: Option<String>,
     color: Option<String>,
 }
 
-/// Parsed border info from styles.xml.
 #[derive(Debug, Clone, Default)]
 struct ParsedBorder {
     left: ParsedBorderSide,
@@ -681,7 +654,6 @@ struct ParsedBorder {
     bottom: ParsedBorderSide,
 }
 
-/// Parsed alignment info from styles.xml.
 #[derive(Debug, Clone, Default)]
 struct ParsedAlignment {
     horizontal: Option<String>,
@@ -690,7 +662,6 @@ struct ParsedAlignment {
     text_rotation: Option<u16>,
 }
 
-/// Style info for a single xf entry.
 #[derive(Debug, Clone)]
 struct StyleInfo {
     is_date: bool,
@@ -1317,7 +1288,6 @@ fn parse_f64_from_bytes(bytes: &[u8]) -> f64 {
         .unwrap_or(0.0)
 }
 
-/// A raw hyperlink reference parsed from the sheet XML (before resolving via rels).
 struct HyperlinkRef {
     cell: String,
     r_id: Option<String>,
@@ -1325,7 +1295,6 @@ struct HyperlinkRef {
     tooltip: Option<String>,
 }
 
-/// Parsed worksheet data: rows, merge ranges, column widths, row heights, freeze pane, auto-filter, data validations, hyperlinks, and protection.
 struct WorksheetData {
     rows: Vec<Vec<CellValue>>,
     merges: Vec<String>,
@@ -1338,7 +1307,6 @@ struct WorksheetData {
     protection: Option<SheetProtection>,
 }
 
-/// Parse a single worksheet XML file and return rows of cell values and merge ranges.
 fn parse_worksheet<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     path: &str,
@@ -1984,15 +1952,12 @@ fn parse_worksheet<R: Read + Seek>(
     })
 }
 
-/// Relationship entry from a sheet .rels file.
 struct SheetRel {
     id: String,
     target: String,
     rel_type: String,
 }
 
-/// Parse the .rels file for a given sheet path.
-/// E.g., for "xl/worksheets/sheet1.xml", look up "xl/worksheets/_rels/sheet1.xml.rels".
 fn parse_sheet_rels<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     sheet_path: &str,
@@ -2049,7 +2014,6 @@ fn parse_sheet_rels<R: Read + Seek>(
     Ok(rels)
 }
 
-/// Parse comments XML for a sheet given the sheet's relationships.
 fn parse_comments_for_sheet<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     sheet_rels: &[SheetRel],
@@ -2173,7 +2137,6 @@ fn parse_comments_for_sheet<R: Read + Seek>(
     Ok(comments)
 }
 
-/// Resolve hyperlink references using sheet relationships to produce final Hyperlink structs.
 fn resolve_hyperlinks(refs: &[HyperlinkRef], sheet_rels: &[SheetRel]) -> Vec<Hyperlink> {
     let mut hyperlinks = Vec::with_capacity(refs.len());
     for href in refs {
@@ -2201,7 +2164,6 @@ fn resolve_hyperlinks(refs: &[HyperlinkRef], sheet_rels: &[SheetRel]) -> Vec<Hyp
     hyperlinks
 }
 
-/// Parse tables referenced in a sheet's relationships.
 fn parse_tables_for_sheet<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     sheet_rels: &[SheetRel],
@@ -2307,7 +2269,6 @@ fn parse_tables_for_sheet<R: Read + Seek>(
     Ok(tables)
 }
 
-/// Convert raw cell value text into a typed CellValue based on the cell type attribute.
 fn resolve_cell_value(
     cell_type: &str,
     raw: &str,

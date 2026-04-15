@@ -350,7 +350,6 @@ fn py_to_cell(obj: &Bound<'_, PyAny>) -> CellValue {
     CellValue::String(obj.to_string())
 }
 
-/// Convert a Python CellStyle to a Rust CellStyle.
 fn py_cell_style_to_rust(style: &CellStyle) -> types::CellStyle {
     types::CellStyle {
         bold: style.bold,
@@ -373,7 +372,6 @@ fn py_cell_style_to_rust(style: &CellStyle) -> types::CellStyle {
     }
 }
 
-/// Convert a column letter (e.g. "A", "AA", "BZ") to a 0-based column index.
 fn col_letter_to_index(col: &str) -> PyResult<u32> {
     let col = col.trim().to_uppercase();
     if col.is_empty() || !col.bytes().all(|b| b.is_ascii_alphabetic()) {
@@ -388,7 +386,6 @@ fn col_letter_to_index(col: &str) -> PyResult<u32> {
     Ok(index - 1)
 }
 
-/// Returns version information about the native core.
 #[pyfunction]
 fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

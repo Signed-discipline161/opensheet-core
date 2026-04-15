@@ -7,7 +7,6 @@ use std::collections::HashMap;
 
 use crate::types::{datetime_to_excel_serial, CellStyle, CellValue};
 
-/// Errors that can occur during XLSX writing.
 #[derive(Debug)]
 pub enum XlsxWriteError {
     Zip(zip::result::ZipError),
@@ -42,8 +41,6 @@ impl From<XlsxWriteError> for pyo3::PyErr {
         pyo3::exceptions::PyIOError::new_err(e.to_string())
     }
 }
-
-// ---------- Internal style registry types ----------
 
 #[derive(Debug, Clone, PartialEq)]
 struct FontDef {
@@ -128,9 +125,6 @@ fn normalize_color(color: &str) -> String {
     }
 }
 
-// ---------- Writer types ----------
-
-/// Tracks info about each sheet for writing workbook metadata at the end.
 struct SheetEntry {
     name: String,
     index: usize,
@@ -138,7 +132,6 @@ struct SheetEntry {
     state: String,
 }
 
-/// A defined name (named range) entry.
 struct DefinedNameEntry {
     name: String,
     value: String,
@@ -146,21 +139,18 @@ struct DefinedNameEntry {
     sheet_index: Option<usize>,
 }
 
-/// A comment entry for the writer.
 struct CommentEntry {
     cell: String,
     author: String,
     text: String,
 }
 
-/// A hyperlink entry for the writer.
 struct HyperlinkEntry {
     cell: String,
     url: String,
     tooltip: Option<String>,
 }
 
-/// Sheet protection entry for the writer.
 struct ProtectionEntry {
     password_hash: Option<String>,
     sheet: bool,
@@ -181,12 +171,10 @@ struct ProtectionEntry {
     select_unlocked_cells: bool,
 }
 
-/// A table column entry for the writer.
 struct TableColumnEntry {
     name: String,
 }
 
-/// A structured table entry for the writer.
 struct TableEntry {
     reference: String,
     columns: Vec<TableColumnEntry>,
@@ -195,7 +183,6 @@ struct TableEntry {
     sheet_index: usize,
 }
 
-/// A data validation entry for the writer.
 struct DataValidationEntry {
     validation_type: String,
     operator: Option<String>,
@@ -212,7 +199,6 @@ struct DataValidationEntry {
     error_style: Option<String>,
 }
 
-/// Pending merge ranges for the current sheet.
 struct PendingMerges {
     ranges: Vec<String>,
 }
@@ -260,7 +246,6 @@ pub struct StreamingXlsxWriter<W: Write + Seek> {
 }
 
 impl<W: Write + Seek> StreamingXlsxWriter<W> {
-    /// Create a new streaming XLSX writer.
     pub fn new(writer: W) -> Self {
         StreamingXlsxWriter {
             zip: Some(ZipWriter::new(writer)),
@@ -382,14 +367,12 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         }
     }
 
-    /// Get a mutable reference to the inner ZipWriter, or error if closed.
     fn zip(&mut self) -> Result<&mut ZipWriter<W>, XlsxWriteError> {
         self.zip
             .as_mut()
             .ok_or_else(|| XlsxWriteError::InvalidState("Writer is already closed".to_string()))
     }
 
-    /// Add a new sheet. If a sheet is currently open, it will be closed first.
     pub fn add_sheet(&mut self, name: &str) -> Result<(), XlsxWriteError> {
         self.zip()?; // Check not closed
 
@@ -490,7 +473,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Write a row of cell values to the current sheet.
     pub fn write_row(&mut self, cells: &[CellValue]) -> Result<(), XlsxWriteError> {
         if !self.sheet_open {
             return Err(XlsxWriteError::InvalidState(
@@ -558,8 +540,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Write a single cell value with an optional style override.
-    /// Takes col_letter and row_num separately to avoid per-cell format!() allocation.
     fn write_single_cell(
         &mut self,
         col: &str,
@@ -677,7 +657,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Mark a range of cells as merged (e.g. "A1:B2").
     pub fn merge_cells(&mut self, range: &str) -> Result<(), XlsxWriteError> {
         if !self.sheet_open {
             return Err(XlsxWriteError::InvalidState(
@@ -688,8 +667,7 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Set the width of a column (0-based index) in character units.
-    /// Must be called before any rows are written (i.e., after add_sheet but before write_row).
+    /// Must be called after add_sheet() but before write_row().
     pub fn set_column_width(&mut self, col_index: u32, width: f64) -> Result<(), XlsxWriteError> {
         if !self.sheet_open {
             return Err(XlsxWriteError::InvalidState(
@@ -705,7 +683,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Set freeze panes: freeze the top `row` rows and left `col` columns.
     /// Must be called after add_sheet() but before write_row().
     pub fn freeze_panes(&mut self, row: u32, col: u32) -> Result<(), XlsxWriteError> {
         if !self.sheet_open {
@@ -722,7 +699,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Set an auto-filter on a range (e.g. "A1:C1").
     pub fn auto_filter(&mut self, range: &str) -> Result<(), XlsxWriteError> {
         if !self.sheet_open {
             return Err(XlsxWriteError::InvalidState(
@@ -733,9 +709,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Set the visibility state of the current sheet.
-    ///
-    /// Valid states: "visible", "hidden", "veryHidden".
     pub fn set_sheet_state(&mut self, state: &str) -> Result<(), XlsxWriteError> {
         if self.sheets.is_empty() {
             return Err(XlsxWriteError::InvalidState(
@@ -754,11 +727,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Define a named range (defined name) for the workbook.
-    ///
-    /// - `name`: The defined name (e.g. "TaxRate").
-    /// - `value`: The reference (e.g. "Sheet1!$B$2").
-    /// - `sheet_index`: If Some, the name is scoped to that sheet (0-based). If None, workbook-scoped.
     pub fn define_name(
         &mut self,
         name: &str,
@@ -783,7 +751,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Set the height of a row (0-based index) in points.
     pub fn set_row_height(&mut self, row_index: u32, height: f64) -> Result<(), XlsxWriteError> {
         if !self.sheet_open {
             return Err(XlsxWriteError::InvalidState(
@@ -794,10 +761,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Set a core document property.
-    ///
-    /// Valid keys: "title", "subject", "creator", "keywords", "description",
-    /// "last_modified_by", "category".
     pub fn set_document_property(&mut self, key: &str, value: &str) -> Result<(), XlsxWriteError> {
         match key {
             "title" | "subject" | "creator" | "keywords" | "description" | "last_modified_by"
@@ -813,7 +776,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         }
     }
 
-    /// Set a custom document property (arbitrary key-value pair).
     pub fn set_custom_property(&mut self, name: &str, value: &str) -> Result<(), XlsxWriteError> {
         if name.is_empty() {
             return Err(XlsxWriteError::InvalidState(
@@ -825,7 +787,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Add a data validation rule to the current sheet.
     #[allow(clippy::too_many_arguments)]
     pub fn add_data_validation(
         &mut self,
@@ -866,7 +827,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Add a comment to a cell in the current sheet.
     pub fn add_comment(
         &mut self,
         cell_ref: &str,
@@ -886,7 +846,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Add a hyperlink to a cell in the current sheet.
     pub fn add_hyperlink(
         &mut self,
         cell_ref: &str,
@@ -906,7 +865,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Protect the current sheet with optional password and configurable options.
     #[allow(clippy::too_many_arguments)]
     pub fn protect_sheet(
         &mut self,
@@ -956,7 +914,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Add a structured table to the current sheet.
     pub fn add_table(
         &mut self,
         reference: &str,
@@ -983,9 +940,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    // ---------- Style registry methods ----------
-
-    /// Register a custom number format and return its numFmtId.
     fn register_num_fmt(&mut self, format_code: &str) -> u32 {
         if let Some(&id) = self.num_fmt_map.get(format_code) {
             return id;
@@ -997,7 +951,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         id
     }
 
-    /// Register an XF entry and return its index. Deduplicates via HashMap.
     fn register_xf(&mut self, xf: &XfDef) -> u32 {
         if let Some(&idx) = self.xf_index.get(xf) {
             return idx;
@@ -1008,7 +961,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         idx
     }
 
-    /// Register a number format and return its xf index (for FormattedNumber backward compat).
     fn register_format(&mut self, format_code: &str) -> u32 {
         let num_fmt_id = self.register_num_fmt(format_code);
         let xf = XfDef {
@@ -1021,7 +973,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         self.register_xf(&xf)
     }
 
-    /// Register a font from a CellStyle and return its fontId.
     fn register_font(&mut self, style: &CellStyle) -> usize {
         let font = FontDef {
             bold: style.bold,
@@ -1043,7 +994,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         idx
     }
 
-    /// Register a fill from a CellStyle and return its fillId.
     fn register_fill(&mut self, style: &CellStyle) -> usize {
         if style.fill_color.is_none() {
             return 0; // Default "none" fill
@@ -1061,7 +1011,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         idx
     }
 
-    /// Register a border from a CellStyle and return its borderId.
     fn register_border(&mut self, style: &CellStyle) -> usize {
         if style.border_left.is_none()
             && style.border_right.is_none()
@@ -1092,7 +1041,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         idx
     }
 
-    /// Register a full cell style and return its xf index.
     fn register_cell_style(&mut self, style: &CellStyle) -> u32 {
         let font_id = self.register_font(style);
         let fill_id = self.register_fill(style);
@@ -1126,9 +1074,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         self.register_xf(&xf)
     }
 
-    // ---------- Sheet/file lifecycle ----------
-
-    /// Close the current sheet's XML.
     fn close_sheet(&mut self) -> Result<(), XlsxWriteError> {
         if self.sheet_open {
             // Ensure <sheetData> was opened (even for sheets with no rows)
@@ -1296,8 +1241,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Finalize the XLSX file: close any open sheet, write workbook metadata,
-    /// content types, and relationships.
     pub fn close(mut self) -> Result<(), XlsxWriteError> {
         self.finalize()
     }
@@ -1702,7 +1645,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
         Ok(())
     }
 
-    /// Write the xl/styles.xml file with all registered styles.
     fn write_styles_xml(&mut self) -> Result<(), XlsxWriteError> {
         // Take ownership of style data
         let fonts = std::mem::take(&mut self.fonts);
@@ -1844,7 +1786,6 @@ impl<W: Write + Seek> StreamingXlsxWriter<W> {
     }
 }
 
-/// Write a single border side element.
 fn write_border_side<W: Write>(
     w: &mut W,
     name: &str,
